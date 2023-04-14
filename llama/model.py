@@ -13,9 +13,8 @@ from fairscale.nn.model_parallel.utils import divide_and_check_no_remainder
 
 from .xla_model_parallel import (
     ParallelEmbedding,
-    RowParallelLinear,
-    ColumnParallelLinear,
-    get_model_parallel_group,
+    RowParallelLinearQuant,
+    ColumnParallelLinearQuant,
     get_model_parallel_world_size,
     get_model_parallel_rank,
 )
@@ -92,7 +91,7 @@ class Attention(nn.Module):
 
         init_method = lambda x: x
 
-        self.wq = ColumnParallelLinear(
+        self.wq = ColumnParallelLinearQuant(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
@@ -102,7 +101,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
         )
-        self.wk = ColumnParallelLinear(
+        self.wk = ColumnParallelLinearQuant(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
@@ -112,7 +111,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
         )
-        self.wv = ColumnParallelLinear(
+        self.wv = ColumnParallelLinearQuant(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
@@ -122,7 +121,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
         )
-        self.wo = RowParallelLinear(
+        self.wo = RowParallelLinearQuant(
             args.n_heads * self.head_dim,
             args.dim,
             bias=False,
@@ -186,17 +185,14 @@ class FeedForward(nn.Module):
 
         init_method = lambda x: x
 
-        self.w1 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups
+        self.w1 = ColumnParallelLinearQuant(
+            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method
         )
-        self.w2 = RowParallelLinear(
-            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups
+        self.w2 = RowParallelLinearQuant(
+            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method
         )
-        self.w3 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups
+        self.w3 = ColumnParallelLinearQuant(
+            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method
         )
 
     def forward(self, x):
@@ -272,9 +268,8 @@ class Transformer(nn.Module):
             self.cache_kvs.append((cache_k, cache_v))
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
-        self.output = ColumnParallelLinear(
-            params.dim, params.vocab_size, bias=False, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups
+        self.output = ColumnParallelLinearQuant(
+            params.dim, params.vocab_size, bias=False, init_method=init_method
         )
 
         freqs_cis = precompute_freqs_cis(
