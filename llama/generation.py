@@ -118,6 +118,10 @@ def sample_top_p(probs, p):
     # probs_sort[mask] = 0.0
     probs_sort = torch.where(mask, 0.0, probs_sort)
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
-    next_token = torch.multinomial(probs_sort, num_samples=1)
+    #next_token = torch.multinomial(probs_sort, num_samples=1)
+    probs_sum = torch.cumsum(probs_sort, dim=-1)
+    rand_num = torch.rand((probs.size(dim=0), 1), device=probs.device)
+    mask = probs_sum < rand_num
+    next_token = mask.int().sum(dim=-1, keepdim=True)
     next_token = torch.gather(probs_idx, -1, next_token)
     return next_token
