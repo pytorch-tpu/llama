@@ -427,9 +427,9 @@ class ColumnParallelLinearQuant(torch.nn.Module):
         # Set up backprop all-reduce.
         input_parallel = copy_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        fp_w = self.weight * self.weight_scaler
         # output_parallel = F.linear(input_parallel, self.weight, self.bias)
-        output_parallel = F.linear(input_parallel, fp_w, self.bias)
+        output_parallel = F.linear(input_parallel, self.weight, self.bias)
+        output_parallel = output_parallel * self.weight_scaler
         if self.gather_output:
             # All-gather across the partitions.
             output = gather_from_model_parallel_region(output_parallel, self.groups, self.world_size, self.rank)
@@ -625,9 +625,9 @@ class RowParallelLinearQuant(torch.nn.Module):
         else:
             input_parallel = scatter_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        fp_w = self.weight * self.weight_scaler
         # output_parallel = F.linear(input_parallel, self.weight, self.bias)
-        output_parallel = F.linear(input_parallel, fp_w, self.bias)
+        output_parallel = F.linear(input_parallel, self.weight, self.bias)
+        output_parallel = output_parallel * self.weight_scaler
         # All-reduce across all the partitions.
         output_ = reduce_from_model_parallel_region(output_parallel, self.groups, self.world_size, self.rank)
         if self.bias is not None:
