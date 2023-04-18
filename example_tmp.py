@@ -25,6 +25,8 @@ def setup_model_parallel() -> Tuple[int, int]:
 
     # seed must be the same in all processes
     torch.manual_seed(1)
+    device = xm.xla_device()
+    xm.set_rng_state(1, device=device)
     return rank, world_size
 
 
