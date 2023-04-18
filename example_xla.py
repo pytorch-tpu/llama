@@ -38,6 +38,7 @@ def load(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    quant: bool = False,
 ) -> LLaMA:
     start_time = time.time()
     print("Loading")
@@ -55,6 +56,7 @@ def load(
         params = {"dim": dim,
                   "n_layers": n_layers,
                   "n_heads": n_heads,
+                  "quant": quant,
                   }
 
     model_args: ModelArgs = ModelArgs(
@@ -87,13 +89,14 @@ def main(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    quant: bool = False,
 ):
     rank, world_size = setup_model_parallel()
     if rank > 0:
         sys.stdout = open(os.devnull, "w")
 
     generator = load(
-        ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads
+        ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads, quant
     )
 
     prompts = [
@@ -145,8 +148,9 @@ def _fn(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    quant: bool = False,
 ):
-    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads)
+    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant)
 
 def mp_main(
     mp: bool,
@@ -159,11 +163,12 @@ def mp_main(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    quant: bool = False,
 ):
     if mp:
-        xmp.spawn(_fn, args=(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads))
+        xmp.spawn(_fn, args=(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant))
     else:
-        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads)
+        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant)
 
 
 if __name__ == "__main__":
