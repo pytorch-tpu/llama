@@ -21,56 +21,6 @@ def get_model_parallel_group():
     return None
 
 
-# Below modified from fairscale/nn/model_parallel/mappings.py
-
-def _reduce(ctx: Any, input_: torch.Tensor) -> torch.Tensor:
-    """All-reduce the the input tensor across model parallel group."""
-    groups = get_model_parallel_group()
-
-    # if ctx:
-    #     ctx.mark_dirty(input_)
-
-    # Bypass the function if we are using only 1 GPU.
-    if get_model_parallel_world_size() == 1:
-        return input_
-
-    # All-reduce.
-    input_ = xm.all_reduce(xm.REDUCE_SUM, input_, groups=groups)
-
-    return input_
-
-
-def _split(input_: torch.Tensor) -> torch.Tensor:
-    """Split the tensor along its last dimension and keep the
-    corresponding slice."""
-    # Bypass the function if we are using only 1 GPU.
-    if get_model_parallel_world_size() == 1:
-        return input_
-
-    # Split along last dimension.
-    world_size = get_model_parallel_world_size()
-    input_list = split_tensor_along_last_dim(input_, world_size)
-
-    # Note: torch.split does not create contiguous tensors by default.
-    rank = get_model_parallel_rank()
-    output = input_list[rank].contiguous()
-
-    return output
-
-
-def _gather(input_: torch.Tensor) -> torch.Tensor:
-    """Gather tensors and concatinate along the last dimension."""
-    groups = get_model_parallel_group()
-
-    # Bypass the function if we are using only 1 GPU.
-    if get_model_parallel_world_size() == 1:
-        return input_
-
-    output = xm.all_gather(input_, dim=-1, groups=groups)
-
-    return output
-
-
 class _CopyToModelParallelRegion(torch.autograd.Function):
     """Pass the input to the model parallel region."""
 
