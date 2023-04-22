@@ -16,7 +16,6 @@ class LLaMA:
         self.model = model
         self.tokenizer = tokenizer
         self._generate_one_token_fn = self._generate_one_token
-        xm._init_ordinal_world_size()
         self.model = torch.compile(self.model, backend="torchxla_trace_once", fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor, 
@@ -97,7 +96,11 @@ class LLaMA:
                 t = t[: t.index(self.tokenizer.eos_id)]
             except ValueError:
                 pass
-            decoded.append(self.tokenizer.decode(t))
+            try:
+                sentence = self.tokenizer.decode(t)
+            except IndexError:
+                sentence = self.tokenizer.decode(t[1:])
+            decoded.append(sentence)
         print(f"Completed in {time.time() - start_time:.5f} seconds")
         return decoded
 
@@ -108,9 +111,6 @@ def sample_top_p(probs, p):
     mask = probs_sum - probs_sort > p
     probs_sort = torch.where(mask, 0.0, probs_sort)
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
-    probs_sum = torch.cumsum(probs_sort, dim=-1)
-    rand_num = torch.rand((probs.size(dim=0), 1), device=probs.device)
-    mask = probs_sum < rand_num
-    next_token = mask.int().sum(dim=-1, keepdim=True)
+    next_token = torch.multinomial(probs_sort, num_samples=1)
     next_token = torch.gather(probs_idx, -1, next_token)
     return next_token
