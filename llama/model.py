@@ -1,7 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # This software may be used and distributed according to the terms of the GNU General Public License version 3.
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 import math
 
@@ -9,19 +9,19 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-import fairscale.nn.model_parallel.initialize as fs_init
-from fairscale.nn.model_parallel.layers import (
+from .xla_model_parallel import (
     ParallelEmbedding,
     RowParallelLinear,
     ColumnParallelLinear,
+    get_model_parallel_world_size,
 )
 
 
 @dataclass
 class ModelArgs:
-    dim: int = 512
-    n_layers: int = 8
-    n_heads: int = 8
+    dim: int = 4096
+    n_layers: int = 32
+    n_heads: int = 32
     vocab_size: int = -1  # defined later by tokenizer
     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
     norm_eps: float = 1e-5
@@ -77,47 +77,44 @@ class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
 
-        self.n_local_heads = args.n_heads // fs_init.get_model_parallel_world_size()
+        self.n_local_heads = args.n_heads // get_model_parallel_world_size()
         self.head_dim = args.dim // args.n_heads
+
+        init_method = lambda x: x
 
         self.wq = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
             gather_output=False,
-            init_method=lambda x: x,
+            init_method=init_method,
         )
         self.wk = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
             gather_output=False,
-            init_method=lambda x: x,
+            init_method=init_method,
         )
         self.wv = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
             gather_output=False,
-            init_method=lambda x: x,
+            init_method=init_method,
         )
         self.wo = RowParallelLinear(
             args.n_heads * self.head_dim,
             args.dim,
             bias=False,
             input_is_parallel=True,
-            init_method=lambda x: x,
+            init_method=init_method,
         )
 
-        self.cache_k = torch.zeros(
-            (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
-        ).cuda()
-        self.cache_v = torch.zeros(
-            (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
-        ).cuda()
-
-    def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
+                input_idexes: torch.Tensor, cache_kv: Tuple[torch.Tensor, torch.Tensor]):
         bsz, seqlen, _ = x.shape
+        cache_k, cache_v = cache_kv
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
         xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
@@ -126,28 +123,24 @@ class Attention(nn.Module):
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-        self.cache_k = self.cache_k.to(xq)
-        self.cache_v = self.cache_v.to(xq)
+        cache_k = cache_k.index_copy(1, input_idexes, xk)
+        cache_v = cache_v.index_copy(1, input_idexes, xv)
 
-        self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
-        self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
-
-        keys = self.cache_k[:bsz, : start_pos + seqlen]
-        values = self.cache_v[:bsz, : start_pos + seqlen]
+        keys = cache_k[:, :]
+        values = cache_v[:, :]
 
         xq = xq.transpose(1, 2)
         keys = keys.transpose(1, 2)
         values = values.transpose(1, 2)
         scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        if mask is not None:
-            scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
+        scores = scores + mask  # (bs, n_local_heads, slen, max_slen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
         output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
         output = output.transpose(
             1, 2
         ).contiguous().view(bsz, seqlen, -1)
 
-        return self.wo(output)
+        return self.wo(output), (cache_k, cache_v)
 
 
 class FeedForward(nn.Module):
@@ -161,14 +154,16 @@ class FeedForward(nn.Module):
         hidden_dim = int(2 * hidden_dim / 3)
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
+        init_method = lambda x: x
+
         self.w1 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
+            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method
         )
         self.w2 = RowParallelLinear(
-            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=lambda x: x
+            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method
         )
         self.w3 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
+            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method
         )
 
     def forward(self, x):
@@ -189,10 +184,14 @@ class TransformerBlock(nn.Module):
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
-    def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
-        h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask)
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
+                input_idexes: torch.Tensor, cache_kv: Tuple[torch.Tensor, torch.Tensor]):
+        h, new_cache_kv = self.attention.forward(
+            self.attention_norm(x), freqs_cis, mask, input_idexes, cache_kv
+        )
+        h = x + h
         out = h + self.feed_forward.forward(self.ffn_norm(h))
-        return out
+        return out, new_cache_kv
 
 
 class Transformer(nn.Module):
@@ -202,37 +201,56 @@ class Transformer(nn.Module):
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
 
+        init_method = lambda x: x
+
         self.tok_embeddings = ParallelEmbedding(
-            params.vocab_size, params.dim, init_method=lambda x: x
+            params.vocab_size, params.dim, init_method=init_method
         )
 
         self.layers = torch.nn.ModuleList()
+        self.cache_kvs = []
+        n_local_heads = params.n_heads // get_model_parallel_world_size()
+        head_dim = params.dim // params.n_heads
         for layer_id in range(params.n_layers):
             self.layers.append(TransformerBlock(layer_id, params))
+            cache_k = torch.zeros(
+                (params.max_batch_size, params.max_seq_len, n_local_heads, head_dim)
+            )
+            cache_v = torch.zeros(
+                (params.max_batch_size, params.max_seq_len, n_local_heads, head_dim)
+            )
+            self.cache_kvs.append((cache_k, cache_v))
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
         self.output = ColumnParallelLinear(
-            params.dim, params.vocab_size, bias=False, init_method=lambda x: x
+            params.dim, params.vocab_size, bias=False, init_method=init_method
         )
 
-        self.freqs_cis = precompute_freqs_cis(
+        freqs_cis = precompute_freqs_cis(
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
         )
+        self.register_buffer("freqs_cis", freqs_cis)
 
-    @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int):
-        _bsz, seqlen = tokens.shape
+        mask = torch.full((1, 1, self.params.max_seq_len, self.params.max_seq_len),
+                          float("-inf")).to(torch.float)
+        mask = torch.triu(mask, diagonal=1)
+        self.register_buffer("mask", mask)
+
+    @torch.no_grad()
+    def forward(self, tokens: torch.Tensor, input_idexes: torch.Tensor, output_idex: torch.Tensor,
+                cache_kvs: List[Tuple[torch.Tensor, torch.Tensor]]):
+        bsz, seqlen = tokens.shape
+        assert bsz == self.params.max_batch_size
         h = self.tok_embeddings(tokens)
-        self.freqs_cis = self.freqs_cis.to(h.device)
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+        freqs_cis = self.freqs_cis.index_select(0, input_idexes)
 
-        mask = None
-        if seqlen > 1:
-            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
-            mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+        mask = self.mask.index_select(2, input_idexes)
 
-        for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
+        new_cache_kvs = []
+        for layer, cache_kv in zip(self.layers, cache_kvs):
+            h, new_cache_kv = layer(h, freqs_cis, mask, input_idexes, cache_kv)
+            new_cache_kvs.append(new_cache_kv)
         h = self.norm(h)
-        output = self.output(h[:, -1, :])  # only compute last logits
-        return output.float()
+        h = h.index_select(1, output_idex - input_idexes[0]).squeeze(dim=1)
+        output = self.output(h)
+        return output.float(), new_cache_kvs
