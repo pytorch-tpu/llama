@@ -12,6 +12,14 @@ export PROJECT=<your gcloud project name>
 export ZONE=<your tpu vm zone>
 ```
 
+Install nightly torch and torch-xla packages:
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+sudo pip uninstall -y torch torch-xla
+sudo pip install https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch-nightly-cp38-cp38-linux_x86_64.whl https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch_xla-nightly-cp38-cp38-linux_x86_64.whl
+'
+```
+
 Download repo and install dependencies on the TPU VM:
 ```
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
