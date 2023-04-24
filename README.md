@@ -52,15 +52,6 @@ python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_
 '
 ```
 
-Different models require different MP values:
-
-|  Model | MP |
-|--------|----|
-| 7B     | 1  |
-| 13B    | 2  |
-| 33B    | 4  |
-| 65B    | 8  |
-
 ## FAQ
 
 - [1. The download.sh script doesn't work on default bash in MacOS X](FAQ.md#1)
