@@ -5,13 +5,30 @@ In order to download the checkpoints and tokenizer, fill this [google form](http
 
 ## Setup
 
-In a conda env with pytorch / cuda available, run:
+Prepare TPU cluster environment variables:
 ```
+export TPU_NAME=<your tpu vm name>
+export PROJECT=<your gcloud project name>
+export ZONE=<your tpu vm zone>
+```
+
+Install nightly torch and torch-xla packages:
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+sudo pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
+sudo pip3 install https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch-nightly+20230422-cp38-cp38-linux_x86_64.whl https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch_xla-nightly+20230422-cp38-cp38-linux_x86_64.whl
+pip3 install torch-xla[tpuvm]
+'
+```
+
+Download repo and install dependencies on the TPU VM:
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+git clone --branch stable https://github.com/pytorch-tpu/llama.git
+cd llama
 pip install -r requirements.txt
-```
-Then in this repository:
-```
 pip install -e .
+'
 ```
 
 ## Download
@@ -21,19 +38,28 @@ Edit the `download.sh` script with the signed url provided in the email to downl
 
 ## Inference
 
-The provided `example.py` can be run on a single or multi-gpu node with `torchrun` and will output completions for two pre-defined prompts. Using `TARGET_FOLDER` as defined in `download.sh`:
+The provided `example_xla.py` can be run on a TPU VM with `gcloud compute tpus tpu-vm ssh` and will output completions for one pre-defined prompts. Using `TARGET_FOLDER` as defined in `download.sh`:
 ```
-torchrun --nproc_per_node MP example.py --ckpt_dir $TARGET_FOLDER/model_size --tokenizer_path $TARGET_FOLDER/tokenizer.model
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+export PJRT_DEVICE=TPU
+export TOKENIZER_PATH=$TARGET_FOLDER/tokenizer.model
+export CKPT_DIR=$TARGET_FOLDER/model_size
+
+cd llama
+python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --ckpt_dir $CKPT_DIR --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --mp True
+'
 ```
 
-Different models require different MP values:
+If you don't have downloaded LLaMA model files, you can try the script with the provided T5 tokenizer (note that without a model checkpoint, the output would not make sense):
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+export PJRT_DEVICE=TPU
+export TOKENIZER_PATH=$HOME/llama/t5_tokenizer/spiece.model
 
-|  Model | MP |
-|--------|----|
-| 7B     | 1  |
-| 13B    | 2  |
-| 33B    | 4  |
-| 65B    | 8  |
+cd llama
+python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --dim 4096 --n_heads 32 --n_layers 32 --mp True
+'
+```
 
 ## FAQ
 
