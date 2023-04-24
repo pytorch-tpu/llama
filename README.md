@@ -15,15 +15,16 @@ export ZONE=<your tpu vm zone>
 Install nightly torch and torch-xla packages:
 ```
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
-sudo pip uninstall -y torch torch-xla
-sudo pip install https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch-nightly-cp38-cp38-linux_x86_64.whl https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch_xla-nightly-cp38-cp38-linux_x86_64.whl
+sudo pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
+sudo pip3 install https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch-nightly+20230422-cp38-cp38-linux_x86_64.whl https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch_xla-nightly+20230422-cp38-cp38-linux_x86_64.whl
+pip3 install torch-xla[tpuvm]
 '
 ```
 
 Download repo and install dependencies on the TPU VM:
 ```
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
-git clone https://github.com/pytorch-tpu/llama.git
+git clone --branch stable https://github.com/pytorch-tpu/llama.git
 cd llama
 pip install -r requirements.txt
 pip install -e .
