@@ -5,13 +5,21 @@ In order to download the checkpoints and tokenizer, fill this [google form](http
 
 ## Setup
 
-In a conda env with pytorch / cuda available, run:
+Prepare TPU cluster environment variables:
 ```
+export TPU_NAME=<your tpu vm name>
+export PROJECT=<your gcloud project name>
+export ZONE=<your tpu vm zone>
+```
+
+Download repo and install dependencies on the TPU VM:
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+git clone https://github.com/pytorch-tpu/llama.git
+cd llama
 pip install -r requirements.txt
-```
-Then in this repository:
-```
 pip install -e .
+'
 ```
 
 ## Download
@@ -20,13 +28,6 @@ Once your request is approved, you will receive links to download the tokenizer 
 Edit the `download.sh` script with the signed url provided in the email to download the model weights and tokenizer.
 
 ## Inference
-
-Prepare TPU cluster environment variables:
-```
-export TPU_NAME=<your tpu vm name>
-export PROJECT=<your gcloud project name>
-export ZONE=<your tpu vm zone>
-```
 
 The provided `example_xla.py` can be run on a TPU VM with `gcloud compute tpus tpu-vm ssh` and will output completions for one pre-defined prompts. Using `TARGET_FOLDER` as defined in `download.sh`:
 ```
