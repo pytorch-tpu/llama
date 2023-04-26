@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Any
+from typing import Callable, Optional, List, Any
 
 import torch
 import torch.nn.functional as F
@@ -144,6 +144,8 @@ def _initialize_affine_weight(
     per_partition_size: int,
     partition_dim: int,
     init_method: Callable[[torch.Tensor], torch.Tensor],
+    world_size: int,
+    rank: int,
     stride: int = 1,
     return_master_weight: bool = False,
 ) -> Optional[torch.Tensor]:
@@ -153,7 +155,6 @@ def _initialize_affine_weight(
     the relevant chunk."""
 
     # If we only use 1 process for model parallelism, bypass scatter.
-    world_size = get_model_parallel_world_size()
     if world_size == 1:
         init_method(weight)
         if return_master_weight:
@@ -167,7 +168,6 @@ def _initialize_affine_weight(
     # Split and copy
     per_partition_per_stride_size = divide_and_check_no_remainder(per_partition_size, stride)
     weight_list = torch.split(master_weight, per_partition_per_stride_size, dim=partition_dim)
-    rank = get_model_parallel_rank()
     my_weight_list = weight_list[rank::world_size]
 
     with torch.no_grad():
@@ -199,8 +199,21 @@ class ParallelEmbedding(torch.nn.Module):
         sparse: bool = False,
         init_method: Callable[[torch.Tensor], torch.Tensor] = init.xavier_normal_,
         keep_master_weight_for_test: bool = False,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+        groups: Optional[List] = None,
     ) -> None:
         super(ParallelEmbedding, self).__init__()
+
+        if world_size is None:
+            self.groups = get_model_parallel_group()
+            self.world_size = get_model_parallel_world_size()
+            self.rank = get_model_parallel_rank()
+        else:
+            self.groups = groups
+            self.world_size = world_size
+            self.rank = rank
+
         # Keep the input dimensions.
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
@@ -211,8 +224,7 @@ class ParallelEmbedding(torch.nn.Module):
         self.sparse = sparse
         self._weight = None
         # Divide the weight matrix along the embedding dimension.
-        world_size = get_model_parallel_world_size()
-        self.embedding_dim_per_partition = divide_and_check_no_remainder(self.embedding_dim, world_size)
+        self.embedding_dim_per_partition = divide_and_check_no_remainder(self.embedding_dim, self.world_size)
 
         # Allocate weights.
         self.weight = Parameter(torch.Tensor(self.num_embeddings, self.embedding_dim_per_partition))
@@ -224,12 +236,11 @@ class ParallelEmbedding(torch.nn.Module):
             self.embedding_dim_per_partition,
             1,
             init_method,
+            self.world_size,
+            self.rank,
             stride=1,
             return_master_weight=False,
         )
-        self.groups = get_model_parallel_group()
-        self.world_size = get_model_parallel_world_size()
-        self.rank = get_model_parallel_rank()
 
     def forward(self, input_: torch.Tensor) -> torch.Tensor:  # type: ignore
         input_parallel = copy_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
@@ -276,16 +287,27 @@ class ColumnParallelLinear(torch.nn.Module):
         init_method: Callable[[torch.Tensor], torch.Tensor] = init.xavier_normal_,
         stride: int = 1,
         keep_master_weight_for_test: bool = False,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+        groups: Optional[List] = None,
     ) -> None:
         super(ColumnParallelLinear, self).__init__()
+
+        if world_size is None:
+            self.groups = get_model_parallel_group()
+            self.world_size = get_model_parallel_world_size()
+            self.rank = get_model_parallel_rank()
+        else:
+            self.groups = groups
+            self.world_size = world_size
+            self.rank = rank
 
         # Keep input parameters
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
         # Divide the weight matrix along the last dimension.
-        world_size = get_model_parallel_world_size()
-        self.output_size_per_partition = divide_and_check_no_remainder(out_features, world_size)
+        self.output_size_per_partition = divide_and_check_no_remainder(out_features, self.world_size)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
@@ -307,12 +329,11 @@ class ColumnParallelLinear(torch.nn.Module):
             self.output_size_per_partition,
             0,
             init_method,
+            self.world_size,
+            self.rank,
             stride=stride,
             return_master_weight=keep_master_weight_for_test,
         )
-        self.groups = get_model_parallel_group()
-        self.world_size = get_model_parallel_world_size()
-        self.rank = get_model_parallel_rank()
 
     def get_master_weight(self) -> torch.Tensor:
         return gather_from_model_parallel_region(self.weight.data.transpose(0, 1), self.groups, self.world_size, self.rank).transpose_(0, 1)
@@ -366,16 +387,27 @@ class RowParallelLinear(torch.nn.Module):
         init_method: Callable[[torch.Tensor], torch.Tensor] = init.xavier_normal_,
         stride: int = 1,
         keep_master_weight_for_test: bool = False,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+        groups: Optional[List] = None,
     ):
         super(RowParallelLinear, self).__init__()
+
+        if world_size is None:
+            self.groups = get_model_parallel_group()
+            self.world_size = get_model_parallel_world_size()
+            self.rank = get_model_parallel_rank()
+        else:
+            self.groups = groups
+            self.world_size = world_size
+            self.rank = rank
 
         # Keep input parameters
         self.in_features = in_features
         self.out_features = out_features
         self.input_is_parallel = input_is_parallel
         # Divide the weight matrix along the last dimension.
-        world_size = get_model_parallel_world_size()
-        self.input_size_per_partition = divide_and_check_no_remainder(in_features, world_size)
+        self.input_size_per_partition = divide_and_check_no_remainder(in_features, self.world_size)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
@@ -397,12 +429,11 @@ class RowParallelLinear(torch.nn.Module):
             self.input_size_per_partition,
             1,
             init_method,
+            self.world_size,
+            self.rank,
             stride=stride,
             return_master_weight=keep_master_weight_for_test,
         )
-        self.groups = get_model_parallel_group()
-        self.world_size = get_model_parallel_world_size()
-        self.rank = get_model_parallel_rank()
 
     def get_master_weight(self) -> torch.Tensor:
         return gather_from_model_parallel_region(self.weight.data, self.groups, self.world_size, self.rank)
