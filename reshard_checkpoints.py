@@ -1,12 +1,7 @@
-from typing import Tuple
 import os
 import shutil
-import sys
 import torch
 import fire
-import time
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_multiprocessing as xmp
 import json
 from pathlib import Path
 
