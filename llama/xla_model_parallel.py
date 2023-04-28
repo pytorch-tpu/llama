@@ -380,8 +380,20 @@ class ColumnParallelLinearQuant(torch.nn.Module):
         init_method: Callable[[torch.Tensor], torch.Tensor] = init.xavier_normal_,
         stride: int = 1,
         keep_master_weight_for_test: bool = False,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+        groups: Optional[List] = None,
     ) -> None:
         super(ColumnParallelLinearQuant, self).__init__()
+
+        if world_size is None:
+            self.groups = get_model_parallel_group()
+            self.world_size = get_model_parallel_world_size()
+            self.rank = get_model_parallel_rank()
+        else:
+            self.groups = groups
+            self.world_size = world_size
+            self.rank = rank
 
         # Keep input parameters
         self.in_features = in_features
@@ -389,7 +401,7 @@ class ColumnParallelLinearQuant(torch.nn.Module):
         self.gather_output = gather_output
         # Divide the weight matrix along the last dimension.
         world_size = get_model_parallel_world_size()
-        self.output_size_per_partition = divide_and_check_no_remainder(out_features, world_size)
+        self.output_size_per_partition = divide_and_check_no_remainder(out_features, self.world_size)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
@@ -413,6 +425,8 @@ class ColumnParallelLinearQuant(torch.nn.Module):
             self.output_size_per_partition,
             0,
             init_method,
+            self.world_size,
+            self.rank,
             stride=stride,
             return_master_weight=keep_master_weight_for_test,
         )
@@ -427,7 +441,6 @@ class ColumnParallelLinearQuant(torch.nn.Module):
         # Set up backprop all-reduce.
         input_parallel = copy_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        # output_parallel = F.linear(input_parallel, self.weight, self.bias)
         output_parallel = F.linear(input_parallel, self.weight, self.bias)
         output_parallel = output_parallel * self.weight_scaler
         if self.gather_output:
@@ -576,16 +589,27 @@ class RowParallelLinearQuant(torch.nn.Module):
         init_method: Callable[[torch.Tensor], torch.Tensor] = init.xavier_normal_,
         stride: int = 1,
         keep_master_weight_for_test: bool = False,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+        groups: Optional[List] = None,
     ):
         super(RowParallelLinearQuant, self).__init__()
+
+        if world_size is None:
+            self.groups = get_model_parallel_group()
+            self.world_size = get_model_parallel_world_size()
+            self.rank = get_model_parallel_rank()
+        else:
+            self.groups = groups
+            self.world_size = world_size
+            self.rank = rank
 
         # Keep input parameters
         self.in_features = in_features
         self.out_features = out_features
         self.input_is_parallel = input_is_parallel
         # Divide the weight matrix along the last dimension.
-        world_size = get_model_parallel_world_size()
-        self.input_size_per_partition = divide_and_check_no_remainder(in_features, world_size)
+        self.input_size_per_partition = divide_and_check_no_remainder(in_features, self.world_size)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
@@ -608,6 +632,8 @@ class RowParallelLinearQuant(torch.nn.Module):
             self.input_size_per_partition,
             1,
             init_method,
+            self.world_size,
+            self.rank,
             stride=stride,
             return_master_weight=keep_master_weight_for_test,
         )

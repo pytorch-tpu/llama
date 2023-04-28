@@ -17,6 +17,7 @@ from .xla_model_parallel import (
     ColumnParallelLinearQuant,
     RowParallelLinear,
     ColumnParallelLinear,
+    get_model_parallel_group,
     get_model_parallel_world_size,
     get_model_parallel_rank,
 )
@@ -196,7 +197,7 @@ class FeedForward(nn.Module):
         world_size: Optional[int] = None,
         rank: Optional[int] = None,
         groups: Optional[List] = None,
-        quant: bool,
+        quant: bool = False,
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
