@@ -400,7 +400,6 @@ class ColumnParallelLinearQuant(torch.nn.Module):
         self.out_features = out_features
         self.gather_output = gather_output
         # Divide the weight matrix along the last dimension.
-        world_size = get_model_parallel_world_size()
         self.output_size_per_partition = divide_and_check_no_remainder(out_features, self.world_size)
 
         # Parameters.
@@ -430,9 +429,6 @@ class ColumnParallelLinearQuant(torch.nn.Module):
             stride=stride,
             return_master_weight=keep_master_weight_for_test,
         )
-        self.groups = get_model_parallel_group()
-        self.world_size = get_model_parallel_world_size()
-        self.rank = get_model_parallel_rank()
 
     def get_master_weight(self) -> torch.Tensor:
         return gather_from_model_parallel_region(self.weight.data.transpose(0, 1), self.groups, self.world_size, self.rank).transpose_(0, 1)
@@ -651,7 +647,6 @@ class RowParallelLinearQuant(torch.nn.Module):
         else:
             input_parallel = scatter_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        # output_parallel = F.linear(input_parallel, self.weight, self.bias)
         output_parallel = F.linear(input_parallel, self.weight, self.bias)
         output_parallel = output_parallel * self.weight_scaler
         # All-reduce across all the partitions.
