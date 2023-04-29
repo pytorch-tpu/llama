@@ -13,8 +13,6 @@ from fairscale.nn.model_parallel.utils import divide_and_check_no_remainder
 
 from .xla_model_parallel import (
     ParallelEmbedding,
-    RowParallelLinearQuant,
-    ColumnParallelLinearQuant,
     RowParallelLinear,
     ColumnParallelLinear,
     get_model_parallel_group,
@@ -96,88 +94,50 @@ class Attention(nn.Module):
 
         init_method = lambda x: x
 
-        if args.quant:
-            self.wq = ColumnParallelLinearQuant(
-                args.dim,
-                args.n_heads * self.head_dim,
-                bias=False,
-                gather_output=False,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-            self.wk = ColumnParallelLinearQuant(
-                args.dim,
-                args.n_heads * self.head_dim,
-                bias=False,
-                gather_output=False,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-            self.wv = ColumnParallelLinearQuant(
-                args.dim,
-                args.n_heads * self.head_dim,
-                bias=False,
-                gather_output=False,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-            self.wo = RowParallelLinearQuant(
-                args.n_heads * self.head_dim,
-                args.dim,
-                bias=False,
-                input_is_parallel=True,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-        else:
-            self.wq = ColumnParallelLinear(
-                args.dim,
-                args.n_heads * self.head_dim,
-                bias=False,
-                gather_output=False,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-            self.wk = ColumnParallelLinear(
-                args.dim,
-                args.n_heads * self.head_dim,
-                bias=False,
-                gather_output=False,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-            self.wv = ColumnParallelLinear(
-                args.dim,
-                args.n_heads * self.head_dim,
-                bias=False,
-                gather_output=False,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
-            self.wo = RowParallelLinear(
-                args.n_heads * self.head_dim,
-                args.dim,
-                bias=False,
-                input_is_parallel=True,
-                init_method=init_method,
-                world_size=world_size,
-                rank=rank,
-                groups=groups,
-            )
+        self.wq = ColumnParallelLinear(
+            args.dim,
+            args.n_heads * self.head_dim,
+            bias=False,
+            gather_output=False,
+            init_method=init_method,
+            world_size=world_size,
+            rank=rank,
+            groups=groups,
+            quant=args.quant,
+        )
+        self.wk = ColumnParallelLinear(
+            args.dim,
+            args.n_heads * self.head_dim,
+            bias=False,
+            gather_output=False,
+            init_method=init_method,
+            world_size=world_size,
+            rank=rank,
+            groups=groups,
+            quant=args.quant,
+        )
+        self.wv = ColumnParallelLinear(
+            args.dim,
+            args.n_heads * self.head_dim,
+            bias=False,
+            gather_output=False,
+            init_method=init_method,
+            world_size=world_size,
+            rank=rank,
+            groups=groups,
+            quant=args.quant,
+        )
+        self.wo = RowParallelLinear(
+            args.n_heads * self.head_dim,
+            args.dim,
+            bias=False,
+            input_is_parallel=True,
+            init_method=init_method,
+            world_size=world_size,
+            rank=rank,
+            groups=groups,
+            quant=args.quant,
+        )
             
 
     def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
@@ -234,26 +194,15 @@ class FeedForward(nn.Module):
 
         init_method = lambda x: x
 
-        if quant:
-            self.w1 = ColumnParallelLinearQuant(
-                dim, hidden_dim, bias=False, gather_output=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
-            self.w2 = RowParallelLinearQuant(
-                hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
-            self.w3 = ColumnParallelLinearQuant(
-                dim, hidden_dim, bias=False, gather_output=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
-        else:
-            self.w1 = ColumnParallelLinear(
-                dim, hidden_dim, bias=False, gather_output=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
-            self.w2 = RowParallelLinear(
-                hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
-            self.w3 = ColumnParallelLinear(
-                dim, hidden_dim, bias=False, gather_output=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
+        self.w1 = ColumnParallelLinear(
+            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups, quant=quant
+        )
+        self.w2 = RowParallelLinear(
+            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method, world_size=world_size, rank=rank, groups=groups, quant=quant
+        )
+        self.w3 = ColumnParallelLinear(
+            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups, quant=quant
+        )
 
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
@@ -328,14 +277,9 @@ class Transformer(nn.Module):
             self.cache_kvs.append((cache_k, cache_v))
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
-        if params.quant:
-            self.output = ColumnParallelLinearQuant(
-                params.dim, params.vocab_size, bias=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
-        else:
-            self.output = ColumnParallelLinear(
-                params.dim, params.vocab_size, bias=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups
-            )
+        self.output = ColumnParallelLinear(
+            params.dim, params.vocab_size, bias=False, init_method=init_method, world_size=world_size, rank=rank, groups=groups, quant=params.quant
+        )
 
         freqs_cis = precompute_freqs_cis(
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
