@@ -360,6 +360,7 @@ class ColumnParallelLinear(torch.nn.Module):
             output = output_parallel
         return output
 
+
 class RowParallelLinear(torch.nn.Module):
     """Linear layer with row parallelism.
 
