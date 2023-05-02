@@ -316,7 +316,7 @@ class ColumnParallelLinear(torch.nn.Module):
         # we allocate the transpose.
         if quant:
             self.weight = Parameter(torch.empty((self.output_size_per_partition, self.in_features), dtype=torch.int8), requires_grad=False)
-            self.weight_scaler = Parameter(torch.empty(1), requires_grad=False)
+            self.weight_scaler = Parameter(torch.zeros(1), requires_grad=False)
         else:
             self.weight = Parameter(torch.Tensor(self.output_size_per_partition, self.in_features))
         if bias:
@@ -426,7 +426,7 @@ class RowParallelLinear(torch.nn.Module):
         # we allocate the transpose.
         if quant:
             self.weight = Parameter(torch.empty((self.out_features, self.input_size_per_partition), dtype=torch.int8), requires_grad=False)
-            self.weight_scaler = Parameter(torch.empty(1), requires_grad=False)
+            self.weight_scaler = Parameter(torch.zeros(1), requires_grad=False)
         else:
             self.weight = Parameter(torch.Tensor(self.out_features, self.input_size_per_partition))
         if bias:
