@@ -50,7 +50,7 @@ python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --ckpt_dir $CKPT_DIR --m
 '
 ```
 
-If you don't have downloaded LLaMA model files, you can try the script with the provided T5 tokenizer (note that without a model checkpoint, the output would not make sense):
+If you don't have the downloaded LLaMA model files, you can try the script with the provided T5 tokenizer (note that without a model checkpoint, the output would not make sense):
 ```
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
 export PJRT_DEVICE=TPU
@@ -60,6 +60,27 @@ cd llama
 python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --dim 4096 --n_heads 32 --n_layers 32 --mp True
 '
 ```
+
+If the downloaded checkpoint has a different model parallelism world size than the targeted TPU VM world size, script `reshard_checkpoints.py` can be used to re-shard the model checkpoint to more pieces. For example, to reshard a 13B LLaMA model checkpoint to run on a V4-16 TPU slice, which has 8 devices:
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
+export PJRT_DEVICE=TPU
+export TOKENIZER_PATH=$TARGET_FOLDER/tokenizer.model
+export CKPT_DIR=$TARGET_FOLDER/model_size
+export NEW_CKPT_DIR=$TARGET_FOLDER/model_size/resharded
+
+cd llama
+python3 reshard_checkpoints.py --original_mp 2 --target_mp 8 --ckpt_dir $CKPT_DIR --tokenizer_path $TOKENIZER_PATH --output_dir $NEW_CKPT_DIR
+'
+```
+
+Different models have different original_mp values:
+|  Model | original_mp |
+|--------|-------------|
+| 7B     | 1           |
+| 13B    | 2           |
+| 33B    | 4           |
+| 65B    | 8           |
 
 ## FAQ
 
