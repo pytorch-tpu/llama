@@ -16,7 +16,8 @@ class LLaMA:
         self.model = model
         self.tokenizer = tokenizer
         self._generate_one_token_fn = self._generate_one_token
-        self.model = torch.compile(self.model, backend="torchxla_trace_once", fullgraph=True)
+        self._generate_one_token_fn = torch.compile(self._generate_one_token_fn,
+                                                    backend="torchxla_trace_once", fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor, 
                             input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p):
@@ -34,9 +35,9 @@ class LLaMA:
             input_text_mask_tmp, tokens_tmp, next_token
         )
         next_token = next_token.unsqueeze(1)
-        tokens.index_copy_(1, cur_pos_tensor, next_token)
+        tokens = tokens.index_copy(1, cur_pos_tensor, next_token)
         input_pos_tensor = input_pos_tensor[-1:] + 1
-        cur_pos_tensor += 1
+        cur_pos_tensor = cur_pos_tensor + 1
         output_pos_tensor = cur_pos_tensor - 1
         input_tokens = tokens.index_select(1, input_pos_tensor)
 
