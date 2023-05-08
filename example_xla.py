@@ -87,6 +87,7 @@ def main(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    prompt_len: int = 6,
 ):
     rank, world_size = setup_model_parallel()
     if rank > 0:
@@ -96,7 +97,9 @@ def main(
         ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads
     )
 
-    prompts = [
+    prompts = [generator.tokenizer.decode(range(1, prompt_len))]
+    print(prompts)
+    # prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
         "I believe the meaning of life is",
         # "Simply put, the theory of relativity states that ",
@@ -122,7 +125,7 @@ def main(
 #plush girafe => girafe peluche
 #
 #cheese =>""",
-    ]
+    # ]
     for _ in range(2):
         with torch.no_grad():
             results = generator.generate(
@@ -145,8 +148,9 @@ def _fn(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    prompt_len: int = 6,
 ):
-    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads)
+    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, prompt_len)
 
 def mp_main(
     mp: bool,
@@ -159,11 +163,12 @@ def mp_main(
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
+    prompt_len: int = 6,
 ):
     if mp:
-        xmp.spawn(_fn, args=(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads))
+        xmp.spawn(_fn, args=(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, prompt_len))
     else:
-        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads)
+        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, prompt_len)
 
 
 if __name__ == "__main__":
