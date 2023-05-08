@@ -290,6 +290,7 @@ class ColumnParallelLinear(torch.nn.Module):
         world_size: Optional[int] = None,
         rank: Optional[int] = None,
         groups: Optional[List] = None,
+        quant: bool = False,
     ) -> None:
         super(ColumnParallelLinear, self).__init__()
 
@@ -306,13 +307,18 @@ class ColumnParallelLinear(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
+        self.quant = quant
         # Divide the weight matrix along the last dimension.
         self.output_size_per_partition = divide_and_check_no_remainder(out_features, self.world_size)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
         # we allocate the transpose.
-        self.weight = Parameter(torch.Tensor(self.output_size_per_partition, self.in_features))
+        if quant:
+            self.weight = Parameter(torch.empty((self.output_size_per_partition, self.in_features), dtype=torch.int8), requires_grad=False)
+            self.weight_scaler = Parameter(torch.zeros(1), requires_grad=False)
+        else:
+            self.weight = Parameter(torch.Tensor(self.output_size_per_partition, self.in_features))
         if bias:
             self.bias = Parameter(torch.Tensor(self.output_size_per_partition))
             # Always initialize bias to zero.
@@ -342,7 +348,11 @@ class ColumnParallelLinear(torch.nn.Module):
         # Set up backprop all-reduce.
         input_parallel = copy_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        output_parallel = F.linear(input_parallel, self.weight, self.bias)
+        if self.quant:
+            output_parallel = F.linear(input_parallel, self.weight, self.bias)
+            output_parallel = output_parallel * self.weight_scaler
+        else:      
+            output_parallel = F.linear(input_parallel, self.weight, self.bias)
         if self.gather_output:
             # All-gather across the partitions.
             output = gather_from_model_parallel_region(output_parallel, self.groups, self.world_size, self.rank)
@@ -390,6 +400,7 @@ class RowParallelLinear(torch.nn.Module):
         world_size: Optional[int] = None,
         rank: Optional[int] = None,
         groups: Optional[List] = None,
+        quant: bool = False,
     ):
         super(RowParallelLinear, self).__init__()
 
@@ -406,13 +417,18 @@ class RowParallelLinear(torch.nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.input_is_parallel = input_is_parallel
+        self.quant = quant
         # Divide the weight matrix along the last dimension.
         self.input_size_per_partition = divide_and_check_no_remainder(in_features, self.world_size)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
         # we allocate the transpose.
-        self.weight = Parameter(torch.Tensor(self.out_features, self.input_size_per_partition))
+        if quant:
+            self.weight = Parameter(torch.empty((self.out_features, self.input_size_per_partition), dtype=torch.int8), requires_grad=False)
+            self.weight_scaler = Parameter(torch.zeros(1), requires_grad=False)
+        else:
+            self.weight = Parameter(torch.Tensor(self.out_features, self.input_size_per_partition))
         if bias:
             self.bias = Parameter(torch.Tensor(self.out_features))
             # Always initialize bias to zero.
@@ -445,7 +461,11 @@ class RowParallelLinear(torch.nn.Module):
         else:
             input_parallel = scatter_to_model_parallel_region(input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        output_parallel = F.linear(input_parallel, self.weight)
+        if self.quant:
+            output_parallel = F.linear(input_parallel, self.weight, self.bias)
+            output_parallel = output_parallel * self.weight_scaler
+        else:
+            output_parallel = F.linear(input_parallel, self.weight)
         # All-reduce across all the partitions.
         output_ = reduce_from_model_parallel_region(output_parallel, self.groups, self.world_size, self.rank)
         if self.bias is not None:
