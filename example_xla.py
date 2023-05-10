@@ -135,7 +135,8 @@ def main(
     for _ in range(2):
         with torch.no_grad():
             results = generator.generate(prompts,
-                                         max_gen_len=256,
+                                         256,
+                                         xm.xla_device(),
                                          temperature=temperature,
                                          top_p=top_p)
 
