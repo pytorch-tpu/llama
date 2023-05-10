@@ -58,7 +58,7 @@ class LLaMA:
 
         prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
 
-        total_len = params.max_seq_len
+        total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
 
         tokens = torch.full((params.max_batch_size, total_len), self.tokenizer.pad_id).long()
         for k, t in enumerate(prompt_tokens):
@@ -84,7 +84,7 @@ class LLaMA:
                 )
             xm.mark_step()
         self.model.cache_kvs = cache_kvs
-        print(f"Decoded in {time.time() - decoding_start_time:.5f} seconds")
+        print(f"Decoded {total_len-1} tokens in {time.time() - decoding_start_time:.5f} seconds")
 
         decoded = []
         for i, t in enumerate(tokens.tolist()):
