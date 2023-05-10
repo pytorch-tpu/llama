@@ -95,7 +95,6 @@ class Attention(nn.Module):
 
         init_method = lambda x: x
 
-        print(args.dim, args.n_heads * self.head_dim)
         self.wq = nn.Linear(
             args.dim,
             args.n_heads * self.head_dim,
@@ -144,9 +143,7 @@ class Attention(nn.Module):
 
     def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
                 input_idexes: torch.Tensor, cache_kv: Tuple[torch.Tensor, torch.Tensor]):
-        print(x.shape)
         bsz, seqlen, _ = x.shape
-        print(bsz, seqlen, _)
         cache_k, cache_v = cache_kv
         xq = self.wq(x)
         xk = self.wk(x)

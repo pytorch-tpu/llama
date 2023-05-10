@@ -25,7 +25,6 @@ class LLaMA:
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor,
                             input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p):
-        print(input_tokens)
         logits, cache_kvs = self.model(input_tokens, input_pos_tensor, output_pos_tensor, cache_kvs)
         if temperature > 0:
             probs = torch.softmax(logits / temperature, dim=-1)
@@ -62,7 +61,8 @@ class LLaMA:
         params = self.model.params
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
-        prompt_tokens = [self.tokenizer.encode(x, bos=False, eos=False) for x in prompts]
+        bos = not USE_CUDA  # The supplied t5 tokenizer doesn't have bos. CUDA will error out but xla won't.
+        prompt_tokens = [self.tokenizer.encode(x, bos=bos, eos=False) for x in prompts]
 
         total_len = params.max_seq_len
 

@@ -124,7 +124,6 @@ def gather_from_model_parallel_region(input_: torch.Tensor, groups, world_size, 
 def my_reduce(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
     """All-reduce the the input tensor across model parallel group."""
     # Bypass the function if we are using only 1 GPU.
-    print(world_size)
     if world_size == 1:
         return input_
 
@@ -156,7 +155,6 @@ def my_split(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
 def my_gather(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
     """Gather tensors and concatinate along the last dimension."""
     # Bypass the function if we are using only 1 GPU.
-    print(world_size)
     if world_size == 1:
         return input_
 
@@ -187,8 +185,6 @@ def _initialize_affine_weight(
 
     Build the master weight on all processes and scatter
     the relevant chunk."""
-
-    print("init", world_size, rank)
 
     # If we only use 1 process for model parallelism, bypass scatter.
     if world_size == 1:
@@ -240,8 +236,6 @@ class ParallelEmbedding(torch.nn.Module):
         groups: Optional[List] = None,
     ) -> None:
         super(ParallelEmbedding, self).__init__()
-
-        print("init", world_size, groups, rank)
 
         if world_size is None:
             self.groups = get_model_parallel_group()
@@ -331,8 +325,6 @@ class ColumnParallelLinear(torch.nn.Module):
         quant: bool = False,
     ) -> None:
         super(ColumnParallelLinear, self).__init__()
-
-        print("init", world_size, groups, rank)
 
         if world_size is None:
             self.groups = get_model_parallel_group()
@@ -443,8 +435,6 @@ class RowParallelLinear(torch.nn.Module):
         quant: bool = False,
     ):
         super(RowParallelLinear, self).__init__()
-
-        print("init", world_size, groups, rank)
 
         if world_size is None:
             self.groups = get_model_parallel_group()
