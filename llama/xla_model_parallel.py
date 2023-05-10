@@ -1,19 +1,42 @@
 from typing import Callable, Optional, List, Any
 
 import torch
+import torch.distributed as dist
+import torch.distributed._functional_collectives as fc
+import torch.distributed.distributed_c10d as c10d
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.parameter import Parameter
-import torch_xla.core.xla_model as xm
 
 from fairscale.nn.model_parallel.utils import divide_and_check_no_remainder, split_tensor_along_last_dim
 
+import os
+USE_CUDA = os.environ.get('USE_CUDA', False)
+
+if not USE_CUDA:
+    import torch_xla.core.xla_model as xm
+
+TAG = None
+RANKSET = None
+GROUP_SIZE = None
+def set_g_group():
+    global TAG
+    global RANKSET
+    global GROUP_SIZE
+
+    assert USE_CUDA, "This hack is only for PyTorch non-XLA CUDA paths, i.e., eager and inductor."
+    TAG, RANKSET, GROUP_SIZE = fc._expand_group(c10d._get_default_group())
+
 
 def get_model_parallel_rank():
+    if USE_CUDA:
+        return dist.get_rank()
     return xm.get_ordinal()
 
 
 def get_model_parallel_world_size():
+    if USE_CUDA:
+        return dist.get_world_size()
     return xm.xrt_world_size()
 
 
@@ -101,11 +124,15 @@ def gather_from_model_parallel_region(input_: torch.Tensor, groups, world_size, 
 def my_reduce(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
     """All-reduce the the input tensor across model parallel group."""
     # Bypass the function if we are using only 1 GPU.
+    print(world_size)
     if world_size == 1:
         return input_
 
     # All-reduce.
-    input_ = xm.all_reduce(xm.REDUCE_SUM, input_, groups=groups)
+    if USE_CUDA:
+        input_ = torch.ops.c10d_functional.all_reduce(input_, "sum", TAG, RANKSET, GROUP_SIZE)
+    else:
+        input_ = xm.all_reduce(xm.REDUCE_SUM, input_, groups=groups)
 
     return input_
 
@@ -129,10 +156,17 @@ def my_split(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
 def my_gather(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
     """Gather tensors and concatinate along the last dimension."""
     # Bypass the function if we are using only 1 GPU.
+    print(world_size)
     if world_size == 1:
         return input_
 
-    output = xm.all_gather(input_, dim=-1, groups=groups)
+    if USE_CUDA:
+        last_dim = input_.dim() - 1
+        output = torch.ops.c10d_functional.all_gather_into_tensor(input_, TAG, RANKSET, GROUP_SIZE)
+        if last_dim != 0:
+            output = torch.cat(torch.chunk(output, GROUP_SIZE, dim=0), dim=last_dim)
+    else:
+        output = xm.all_gather(input_, dim=-1, groups=groups)
 
     return output
 
@@ -153,6 +187,8 @@ def _initialize_affine_weight(
 
     Build the master weight on all processes and scatter
     the relevant chunk."""
+
+    print("init", world_size, rank)
 
     # If we only use 1 process for model parallelism, bypass scatter.
     if world_size == 1:
@@ -204,6 +240,8 @@ class ParallelEmbedding(torch.nn.Module):
         groups: Optional[List] = None,
     ) -> None:
         super(ParallelEmbedding, self).__init__()
+
+        print("init", world_size, groups, rank)
 
         if world_size is None:
             self.groups = get_model_parallel_group()
@@ -293,6 +331,8 @@ class ColumnParallelLinear(torch.nn.Module):
         quant: bool = False,
     ) -> None:
         super(ColumnParallelLinear, self).__init__()
+
+        print("init", world_size, groups, rank)
 
         if world_size is None:
             self.groups = get_model_parallel_group()
@@ -403,6 +443,8 @@ class RowParallelLinear(torch.nn.Module):
         quant: bool = False,
     ):
         super(RowParallelLinear, self).__init__()
+
+        print("init", world_size, groups, rank)
 
         if world_size is None:
             self.groups = get_model_parallel_group()

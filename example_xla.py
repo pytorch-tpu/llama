@@ -7,13 +7,18 @@ import sys
 import torch
 import fire
 import time
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_multiprocessing as xmp
 import json
 from pathlib import Path
 
 from llama import ModelArgs, Transformer, Tokenizer, LLaMA
 from llama.xla_model_parallel import get_model_parallel_rank, get_model_parallel_world_size
+
+import os
+USE_CUDA = os.environ.get('USE_CUDA', False)
+
+if not USE_CUDA:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.distributed.xla_multiprocessing as xmp
 
 
 def setup_model_parallel() -> Tuple[int, int]:
@@ -35,6 +40,7 @@ def load(
     world_size: int,
     max_seq_len: int,
     max_batch_size: int,
+    device: torch.device,
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
@@ -64,11 +70,10 @@ def load(
     )
     tokenizer = Tokenizer(model_path=tokenizer_path)
     model_args.vocab_size = tokenizer.n_words
-    torch.set_default_tensor_type(torch.BFloat16Tensor)
+    # torch.set_default_tensor_type(torch.BFloat16Tensor)
     model = Transformer(model_args)
     if ckpt_dir:
         model.load_state_dict(checkpoint, strict=False)
-    device = xm.xla_device()
     model = model.to(device)
     for i in range(len(model.cache_kvs)):
         model.cache_kvs[i] = tuple(t.to(device) for t in model.cache_kvs[i])
@@ -96,7 +101,7 @@ def main(
         sys.stdout = open(os.devnull, "w")
 
     generator = load(
-        ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads, quant
+        ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, xm.xla_device(), dim, n_layers, n_heads, quant
     )
 
     prompts = [
