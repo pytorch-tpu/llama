@@ -20,8 +20,13 @@ class LLaMA:
         self.model = model
         self.tokenizer = tokenizer
         self._generate_one_token_fn = self._generate_one_token
-        # self._generate_one_token_fn = torch.compile(self._generate_one_token_fn,
-        #                                             backend="torchxla_trace_once", fullgraph=True)
+        if USE_CUDA:
+            # Inductor errors out when compiles _generate_one_token_fn.
+            # TODO(alanwaketan): figure out why.
+            self.model = torch.compile(self.model, fullgraph=True)
+        else:
+            self._generate_one_token_fn = torch.compile(self._generate_one_token_fn,
+                                                    backend="torchxla_trace_once", fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor,
                             input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p):
