@@ -82,6 +82,13 @@ Different models have different original_mp values:
 | 33B    | 4           |
 | 65B    | 8           |
 
+### XLA GPU
+
+`example_xla.py` can also be ran on GPUs with XLA:GPU.
+```
+PJRT_DEVICE=GPU GPU_NUM_DEVICES=4 python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --dim 4096 --n_heads 32 --n_layers 32 --mp True
+```
+
 ## CUDA
 
 `example_cuda.py` is provided to produce CUDA (using Inductor by default) results as the same format as `example_xla.py` such that one can easily compare
