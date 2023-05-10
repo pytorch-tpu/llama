@@ -98,8 +98,7 @@ def main(
         ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads
     )
 
-    prompts = [generator.tokenizer.decode(list(range(prompt_len)))]
-    print(prompts)
+    prompts = [generator.tokenizer.decode([8]*prompt_len)]
     # prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
         # "I believe the meaning of life is",
