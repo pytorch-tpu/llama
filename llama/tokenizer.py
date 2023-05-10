@@ -6,11 +6,11 @@ from logging import getLogger
 from typing import List
 import os
 
-
 logger = getLogger()
 
 
 class Tokenizer:
+
     def __init__(self, model_path: str):
         # reload tokenizer
         assert os.path.isfile(model_path), model_path

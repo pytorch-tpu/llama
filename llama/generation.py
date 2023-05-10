@@ -10,12 +10,15 @@ from llama.tokenizer import Tokenizer
 from llama.model import Transformer
 
 import os
+
 USE_CUDA = os.environ.get('USE_CUDA', False)
 
 if not USE_CUDA:
     import torch_xla.core.xla_model as xm
 
+
 class LLaMA:
+
     def __init__(self, model: Transformer, tokenizer: Tokenizer):
         self.model = model
         self.tokenizer = tokenizer
@@ -25,12 +28,16 @@ class LLaMA:
             # TODO(alanwaketan): figure out why.
             self.model = torch.compile(self.model, fullgraph=True)
         else:
-            self._generate_one_token_fn = torch.compile(self._generate_one_token_fn,
-                                                    backend="torchxla_trace_once", fullgraph=True)
+            self._generate_one_token_fn = torch.compile(
+                self._generate_one_token_fn,
+                backend="torchxla_trace_once",
+                fullgraph=True)
 
-    def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor,
-                            input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p):
-        logits, cache_kvs = self.model(input_tokens, input_pos_tensor, output_pos_tensor, cache_kvs)
+    def _generate_one_token(self, tokens, input_tokens, input_text_mask,
+                            cur_pos_tensor, input_pos_tensor,
+                            output_pos_tensor, cache_kvs, temperature, top_p):
+        logits, cache_kvs = self.model(input_tokens, input_pos_tensor,
+                                       output_pos_tensor, cache_kvs)
         if temperature > 0:
             probs = torch.softmax(logits / temperature, dim=-1)
             next_token = sample_top_p(probs, top_p)
@@ -38,11 +45,10 @@ class LLaMA:
             next_token = torch.argmax(logits, dim=-1)
         next_token = next_token.reshape(-1)
         # only replace token if prompt has already been generated
-        input_text_mask_tmp = input_text_mask.index_select(1, cur_pos_tensor).squeeze(dim=1)
+        input_text_mask_tmp = input_text_mask.index_select(
+            1, cur_pos_tensor).squeeze(dim=1)
         tokens_tmp = tokens.index_select(1, cur_pos_tensor).squeeze(dim=1)
-        next_token = torch.where(
-            input_text_mask_tmp, tokens_tmp, next_token
-        )
+        next_token = torch.where(input_text_mask_tmp, tokens_tmp, next_token)
         next_token = next_token.unsqueeze(1)
         tokens = tokens.index_copy(1, cur_pos_tensor, next_token)
         input_pos_tensor = input_pos_tensor[-1:] + 1
@@ -67,13 +73,16 @@ class LLaMA:
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
         bos = not USE_CUDA  # The supplied t5 tokenizer doesn't have bos. CUDA will error out but xla won't.
-        prompt_tokens = [self.tokenizer.encode(x, bos=bos, eos=False) for x in prompts]
+        prompt_tokens = [
+            self.tokenizer.encode(x, bos=bos, eos=False) for x in prompts
+        ]
 
         total_len = params.max_seq_len
 
-        tokens = torch.full((params.max_batch_size, total_len), self.tokenizer.pad_id).long()
+        tokens = torch.full((params.max_batch_size, total_len),
+                            self.tokenizer.pad_id).long()
         for k, t in enumerate(prompt_tokens):
-            tokens[k, : len(t)] = torch.tensor(t).long()
+            tokens[k, :len(t)] = torch.tensor(t).long()
         tokens = tokens.to(device)
         input_text_mask = tokens != self.tokenizer.pad_id
 
@@ -103,10 +112,10 @@ class LLaMA:
             if i >= len(prompt_tokens):
                 break
             # cut to max gen len
-            t = t[: len(prompt_tokens[i]) + max_gen_len]
+            t = t[:len(prompt_tokens[i]) + max_gen_len]
             # cut to eos tok if any
             try:
-                t = t[: t.index(self.tokenizer.eos_id)]
+                t = t[:t.index(self.tokenizer.eos_id)]
             except ValueError:
                 pass
             try:

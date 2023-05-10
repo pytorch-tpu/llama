@@ -14,6 +14,7 @@ from llama import ModelArgs, Transformer, Tokenizer, LLaMA
 from llama.xla_model_parallel import get_model_parallel_rank, get_model_parallel_world_size
 
 import os
+
 USE_CUDA = os.environ.get('USE_CUDA', False)
 
 if not USE_CUDA:
@@ -110,32 +111,33 @@ def main(
         # "Simply put, the theory of relativity states that ",
         # "Building a website can be done in 10 simple steps:\n",
         # Few shot prompts: https://huggingface.co/blog/few-shot-learning-gpt-neo-and-inference-api
-#        """Tweet: "I hate it when my phone battery dies."
-#Sentiment: Negative
-####
-#Tweet: "My day has been 👍"
-#Sentiment: Positive
-####
-#Tweet: "This is the link to the article"
-#Sentiment: Neutral
-####
-#Tweet: "This new music video was incredibile"
-#Sentiment:""",
-#        """Translate English to French:
-#
-#sea otter => loutre de mer
-#
-#peppermint => menthe poivrée
-#
-#plush girafe => girafe peluche
-#
-#cheese =>""",
+        #        """Tweet: "I hate it when my phone battery dies."
+        #Sentiment: Negative
+        ####
+        #Tweet: "My day has been 👍"
+        #Sentiment: Positive
+        ####
+        #Tweet: "This is the link to the article"
+        #Sentiment: Neutral
+        ####
+        #Tweet: "This new music video was incredibile"
+        #Sentiment:""",
+        #        """Translate English to French:
+        #
+        #sea otter => loutre de mer
+        #
+        #peppermint => menthe poivrée
+        #
+        #plush girafe => girafe peluche
+        #
+        #cheese =>""",
     ]
     for _ in range(2):
         with torch.no_grad():
-            results = generator.generate(
-                prompts, max_gen_len=256, temperature=temperature, top_p=top_p
-            )
+            results = generator.generate(prompts,
+                                         max_gen_len=256,
+                                         temperature=temperature,
+                                         top_p=top_p)
 
         for result in results:
             print(result)
