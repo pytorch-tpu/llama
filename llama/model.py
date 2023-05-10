@@ -73,12 +73,18 @@ def apply_rotary_emb(
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    xq_ = torch.view_as_complex(xq.transpose(1, 2).reshape(-1, xq.shape[1], int(xq.shape[-1] / 2), 2).float())
-    xk_ = torch.view_as_complex(xk.transpose(1, 2).reshape(-1, xq.shape[1], int(xq.shape[-1] / 2), 2).float())
+    xq_ = torch.view_as_complex(
+        xq.transpose(1, 2).reshape(-1, xq.shape[1], int(xq.shape[-1] / 2),
+                                   2).float())
+    xk_ = torch.view_as_complex(
+        xk.transpose(1, 2).reshape(-1, xq.shape[1], int(xq.shape[-1] / 2),
+                                   2).float())
     xq_out = torch.view_as_real(xq_ * freqs_cis)
     xk_out = torch.view_as_real(xk_ * freqs_cis)
-    xq_out = xq_out.reshape(xq.shape[0], xq.shape[2], xq.shape[1], xq.shape[3]).transpose(1, 2)
-    xk_out = xk_out.reshape(xk.shape[0], xk.shape[2], xk.shape[1], xk.shape[3]).transpose(1, 2)
+    xq_out = xq_out.reshape(xq.shape[0], xq.shape[2], xq.shape[1],
+                            xq.shape[3]).transpose(1, 2)
+    xk_out = xk_out.reshape(xk.shape[0], xk.shape[2], xk.shape[1],
+                            xk.shape[3]).transpose(1, 2)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
@@ -147,9 +153,9 @@ class Attention(nn.Module):
             quant=args.quant,
         )
 
-
-    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
-                input_idexes: torch.Tensor, cache_kv: Tuple[torch.Tensor, torch.Tensor]):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor,
+                mask: Optional[torch.Tensor], input_idexes: torch.Tensor,
+                cache_kv: Tuple[torch.Tensor, torch.Tensor]):
         bsz, seqlen, _ = x.shape
         cache_k, cache_v = cache_kv
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
@@ -204,18 +210,33 @@ class FeedForward(nn.Module):
 
         init_method = lambda x: x
 
-        self.w1 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups, quant=quant
-        )
-        self.w2 = RowParallelLinear(
-            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups, quant=quant
-        )
-        self.w3 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups, quant=quant
-        )
+        self.w1 = ColumnParallelLinear(dim,
+                                       hidden_dim,
+                                       bias=False,
+                                       gather_output=False,
+                                       init_method=init_method,
+                                       world_size=world_size,
+                                       rank=rank,
+                                       groups=groups,
+                                       quant=quant)
+        self.w2 = RowParallelLinear(hidden_dim,
+                                    dim,
+                                    bias=False,
+                                    input_is_parallel=True,
+                                    init_method=init_method,
+                                    world_size=world_size,
+                                    rank=rank,
+                                    groups=groups,
+                                    quant=quant)
+        self.w3 = ColumnParallelLinear(dim,
+                                       hidden_dim,
+                                       bias=False,
+                                       gather_output=False,
+                                       init_method=init_method,
+                                       world_size=world_size,
+                                       rank=rank,
+                                       groups=groups,
+                                       quant=quant)
 
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
@@ -239,12 +260,17 @@ class TransformerBlock(nn.Module):
             world_size = get_model_parallel_world_size()
             rank = get_model_parallel_rank()
 
-        self.attention = Attention(args, world_size=world_size,
-                                   rank=rank, groups=groups)
-        self.feed_forward = FeedForward(
-            dim=args.dim, hidden_dim=4 * args.dim, multiple_of=args.multiple_of,
-            world_size=world_size, rank=rank, groups=groups, quant=args.quant
-        )
+        self.attention = Attention(args,
+                                   world_size=world_size,
+                                   rank=rank,
+                                   groups=groups)
+        self.feed_forward = FeedForward(dim=args.dim,
+                                        hidden_dim=4 * args.dim,
+                                        multiple_of=args.multiple_of,
+                                        world_size=world_size,
+                                        rank=rank,
+                                        groups=groups,
+                                        quant=args.quant)
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
@@ -305,10 +331,14 @@ class Transformer(nn.Module):
             self.cache_kvs.append((cache_k, cache_v))
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
-        self.output = ColumnParallelLinear(
-            params.dim, params.vocab_size, bias=False, init_method=init_method,
-            world_size=world_size, rank=rank, groups=groups, quant=params.quant
-        )
+        self.output = ColumnParallelLinear(params.dim,
+                                           params.vocab_size,
+                                           bias=False,
+                                           init_method=init_method,
+                                           world_size=world_size,
+                                           rank=rank,
+                                           groups=groups,
+                                           quant=params.quant)
 
         freqs_cis = precompute_freqs_cis(
             self.params.dim // self.params.n_heads,

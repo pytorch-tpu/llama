@@ -60,18 +60,19 @@ def load(
         with open(Path(ckpt_dir) / "params.json", "r") as f:
             params = json.loads(f.read())
     else:
-        params = {"dim": dim,
-                  "n_layers": n_layers,
-                  "n_heads": n_heads,
-                  "quant": quant,
-                  }
+        params = {
+            "dim": dim,
+            "n_layers": n_layers,
+            "n_heads": n_heads,
+            "quant": quant,
+        }
 
-    model_args: ModelArgs = ModelArgs(
-        max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params
-    )
+    model_args: ModelArgs = ModelArgs(max_seq_len=max_seq_len,
+                                      max_batch_size=max_batch_size,
+                                      **params)
     tokenizer = Tokenizer(model_path=tokenizer_path)
     model_args.vocab_size = tokenizer.n_words
-    torch.set_default_tensor_type(torch.BFloat16Tensor)
+    # torch.set_default_tensor_type(torch.BFloat16Tensor)
     model = Transformer(model_args)
     if ckpt_dir:
         model.load_state_dict(checkpoint, strict=False)
@@ -101,9 +102,9 @@ def main(
     if rank > 0:
         sys.stdout = open(os.devnull, "w")
 
-    generator = load(
-        ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, xm.xla_device(), dim, n_layers, n_heads, quant
-    )
+    generator = load(ckpt_dir, tokenizer_path,
+                     rank, world_size, max_seq_len, max_batch_size,
+                     xm.xla_device(), dim, n_layers, n_heads, quant)
 
     prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
@@ -158,7 +159,9 @@ def _fn(
     n_heads: int = 32,
     quant: bool = False,
 ):
-    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant)
+    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size,
+         ckpt_dir, dim, n_layers, n_heads, quant)
+
 
 def mp_main(
     mp: bool,
@@ -174,9 +177,13 @@ def mp_main(
     quant: bool = False,
 ):
     if mp:
-        xmp.spawn(_fn, args=(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant))
+        xmp.spawn(_fn,
+                  args=(tokenizer_path, temperature, top_p, max_seq_len,
+                        max_batch_size, ckpt_dir, dim, n_layers, n_heads,
+                        quant))
     else:
-        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant)
+        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size,
+             ckpt_dir, dim, n_layers, n_heads, quant)
 
 
 if __name__ == "__main__":
