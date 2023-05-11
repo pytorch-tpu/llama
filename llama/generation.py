@@ -94,20 +94,22 @@ class LLaMA:
         # output_pos_tensor = cur_pos_tensor - 1
         # input_tokens = tokens.index_select(1, input_pos_tensor)
         cache_kvs = self.model.cache_kvs
-        xm.mark_step(wait=True)
+        xm.mark_step()
 
         decoding_start_time = time.time()
+        min_section_len = 16
         prev_pos = 0
-        while prev_pos < min_prompt_size:
+        while prev_pos + min_section_len - 1 < min_prompt_size:
             section_len = 1
             while prev_pos + section_len * 2 <= min_prompt_size:
                 section_len *= 2
             cur_pos = prev_pos + section_len
+            print(f"Processing prompt pos [{prev_pos}, {cur_pos}), section length {section_len}")
             cur_pos_tensor = torch.tensor(cur_pos).to(device)
             input_pos_tensor = torch.arange(prev_pos, cur_pos).to(device)
             output_pos_tensor = cur_pos_tensor - 1
             input_tokens = tokens.index_select(1, input_pos_tensor)
-            xm.mark_step(wait=True)
+            xm.mark_step()
 
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
                 = self._generate_one_token_fn(
