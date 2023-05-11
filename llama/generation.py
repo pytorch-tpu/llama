@@ -43,19 +43,19 @@ class LLaMA:
 
         return tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs
 
-    def _create_start_pos_buckets(self, max_seq_len):
-        buckets = [max_seq_len]
-        while buckets[-1] > 256:
-            buckets.append(buckets[-1] // 2)
-        buckets.append(1)
-        buckets.reverse()
-
-        return buckets
-
-    def _select_start_pos_bucket(self, prompt_size, buckets):
-        for i in range(1, len(buckets)):
-            if prompt_size < buckets[i]:
-                return buckets[i - 1]
+#    def _create_start_pos_buckets(self, max_seq_len):
+#        buckets = [max_seq_len]
+#        while buckets[-1] > 64:
+#            buckets.append(buckets[-1] // 2)
+#        buckets.append(1)
+#        buckets.reverse()
+#
+#        return buckets
+#
+#    def _select_start_pos_bucket(self, prompt_size, buckets):
+#        for i in range(1, len(buckets)):
+#            if prompt_size < buckets[i]:
+#                return buckets[i - 1]
 
     def generate(
         self,
@@ -86,18 +86,40 @@ class LLaMA:
         input_text_mask = tokens != self.tokenizer.pad_id
 
         # start_pos = 1
-        start_pos_buckets = self._create_start_pos_buckets(params.max_seq_len)
-        start_pos = self._select_start_pos_bucket(min_prompt_size, start_pos_buckets)
-        print(f"start_pos = {start_pos}")
-        cur_pos_tensor = torch.tensor(start_pos).to(device)
-        input_pos_tensor = torch.arange(0, start_pos).to(device)
-        output_pos_tensor = cur_pos_tensor - 1
-        input_tokens = tokens.index_select(1, input_pos_tensor)
+        # start_pos_buckets = self._create_start_pos_buckets(params.max_seq_len)
+        # start_pos = self._select_start_pos_bucket(min_prompt_size, start_pos_buckets)
+        # print(f"start_pos = {start_pos}")
+        # cur_pos_tensor = torch.tensor(start_pos).to(device)
+        # input_pos_tensor = torch.arange(0, start_pos).to(device)
+        # output_pos_tensor = cur_pos_tensor - 1
+        # input_tokens = tokens.index_select(1, input_pos_tensor)
         cache_kvs = self.model.cache_kvs
         xm.mark_step(wait=True)
 
         decoding_start_time = time.time()
-        for _ in range(start_pos, total_len):
+        prev_pos = 0
+        while prev_pos < min_prompt_size:
+            section_len = 1
+            while prev_pos + section_len * 2 <= min_prompt_size:
+                section_len *= 2
+            cur_pos = prev_pos + section_len
+            cur_pos_tensor = torch.tensor(cur_pos).to(device)
+            input_pos_tensor = torch.arange(prev_pos, cur_pos).to(device)
+            output_pos_tensor = cur_pos_tensor - 1
+            input_tokens = tokens.index_select(1, input_pos_tensor)
+            xm.mark_step(wait=True)
+
+            tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
+                = self._generate_one_token_fn(
+                    tokens, input_tokens, input_text_mask, cur_pos_tensor,
+                    input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p
+                )
+            xm.mark_step()
+
+            prev_pos = cur_pos
+
+        assert cur_pos_tensor.item() == prev_pos + 1
+        for _ in range(prev_pos + 1, total_len):
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
@@ -105,6 +127,7 @@ class LLaMA:
                 )
             xm.mark_step()
         self.model.cache_kvs = cache_kvs
+        print(f"Processed prompts with {min_prompt_size} to {max_prompt_size} tokens, and generated {total_len - max_prompt_size} tokens")
         print(f"Decoded {total_len-1} tokens in {time.time() - decoding_start_time:.5f} seconds")
 
         decoded = []
