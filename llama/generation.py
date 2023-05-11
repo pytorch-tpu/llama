@@ -43,6 +43,20 @@ class LLaMA:
 
         return tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs
 
+    def _create_start_pos_buckets(self, max_seq_len):
+        buckets = [max_seq_len]
+        while buckets[-1] > 256:
+            buckets.append(buckets[-1] // 2)
+        buckets.append(1)
+        buckets.reverse()
+
+        return buckets
+
+    def _select_start_pos_bucket(self, prompt_size, buckets):
+        for i in range(1, len(buckets)):
+            if prompt_size < buckets[i]:
+                return buckets[i - 1]
+
     def generate(
         self,
         prompts: List[str],
@@ -58,18 +72,23 @@ class LLaMA:
 
         prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
 
+        min_prompt_size = min([len(t) for t in prompt_tokens])
         max_prompt_size = max([len(t) for t in prompt_tokens])
+        assert min_prompt_size >= 1 and max_prompt_size < params.max_seq_len
 
         total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
 
-        tokens = torch.full((params.max_batch_size, total_len), self.tokenizer.pad_id).long()
+        tokens = torch.full((params.max_batch_size, params.max_seq_len), self.tokenizer.pad_id).long()
         for k, t in enumerate(prompt_tokens):
             tokens[k, : len(t)] = torch.tensor(t).long()
         device = xm.xla_device()
         tokens = tokens.to(device)
         input_text_mask = tokens != self.tokenizer.pad_id
 
-        start_pos = 1
+        # start_pos = 1
+        start_pos_buckets = self._create_start_pos_buckets(params.max_seq_len)
+        start_pos = self._select_start_pos_bucket(min_prompt_size, start_pos_buckets)
+        print(f"start_pos = {start_pos}")
         cur_pos_tensor = torch.tensor(start_pos).to(device)
         input_pos_tensor = torch.arange(0, start_pos).to(device)
         output_pos_tensor = cur_pos_tensor - 1
