@@ -127,7 +127,7 @@ def main(
     # ]
     for i in range(2):
         with torch.no_grad():
-            prompts = [generator.tokenizer.decode([8] * (prompt_len // (i + 1))) for _ in range(max_batch_size)]
+            prompts = [generator.tokenizer.decode([8] * (14 - i * 10)) for _ in range(max_batch_size)]
             results = generator.generate(
                 prompts, max_gen_len=max_gen_len, temperature=temperature, top_p=top_p
             )
