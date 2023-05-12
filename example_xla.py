@@ -7,13 +7,20 @@ import sys
 import torch
 import fire
 import time
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_multiprocessing as xmp
 import json
 from pathlib import Path
 
 from llama import ModelArgs, Transformer, Tokenizer, LLaMA
 from llama.xla_model_parallel import get_model_parallel_rank, get_model_parallel_world_size
+
+import os
+
+USE_CUDA = os.environ.get('USE_CUDA', False)
+
+# Some how xla init will slow down the CUDA speed.
+if not USE_CUDA:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.distributed.xla_multiprocessing as xmp
 
 
 def setup_model_parallel() -> Tuple[int, int]:
@@ -35,6 +42,7 @@ def load(
     world_size: int,
     max_seq_len: int,
     max_batch_size: int,
+    device: torch.device,
     dim: int = 4096,
     n_layers: int = 32,
     n_heads: int = 32,
@@ -53,22 +61,22 @@ def load(
         with open(Path(ckpt_dir) / "params.json", "r") as f:
             params = json.loads(f.read())
     else:
-        params = {"dim": dim,
-                  "n_layers": n_layers,
-                  "n_heads": n_heads,
-                  "quant": quant,
-                  }
+        params = {
+            "dim": dim,
+            "n_layers": n_layers,
+            "n_heads": n_heads,
+            "quant": quant,
+        }
 
-    model_args: ModelArgs = ModelArgs(
-        max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params
-    )
+    model_args: ModelArgs = ModelArgs(max_seq_len=max_seq_len,
+                                      max_batch_size=max_batch_size,
+                                      **params)
     tokenizer = Tokenizer(model_path=tokenizer_path)
     model_args.vocab_size = tokenizer.n_words
     torch.set_default_tensor_type(torch.BFloat16Tensor)
     model = Transformer(model_args)
     if ckpt_dir:
         model.load_state_dict(checkpoint, strict=False)
-    device = xm.xla_device()
     model = model.to(device)
     for i in range(len(model.cache_kvs)):
         model.cache_kvs[i] = tuple(t.to(device) for t in model.cache_kvs[i])
@@ -95,9 +103,9 @@ def main(
     if rank > 0:
         sys.stdout = open(os.devnull, "w")
 
-    generator = load(
-        ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads, quant
-    )
+    generator = load(ckpt_dir, tokenizer_path,
+                     rank, world_size, max_seq_len, max_batch_size,
+                     xm.xla_device(), dim, n_layers, n_heads, quant)
 
     prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
@@ -105,32 +113,34 @@ def main(
         # "Simply put, the theory of relativity states that ",
         # "Building a website can be done in 10 simple steps:\n",
         # Few shot prompts: https://huggingface.co/blog/few-shot-learning-gpt-neo-and-inference-api
-#        """Tweet: "I hate it when my phone battery dies."
-#Sentiment: Negative
-####
-#Tweet: "My day has been 👍"
-#Sentiment: Positive
-####
-#Tweet: "This is the link to the article"
-#Sentiment: Neutral
-####
-#Tweet: "This new music video was incredibile"
-#Sentiment:""",
-#        """Translate English to French:
-#
-#sea otter => loutre de mer
-#
-#peppermint => menthe poivrée
-#
-#plush girafe => girafe peluche
-#
-#cheese =>""",
+        #        """Tweet: "I hate it when my phone battery dies."
+        #Sentiment: Negative
+        ####
+        #Tweet: "My day has been 👍"
+        #Sentiment: Positive
+        ####
+        #Tweet: "This is the link to the article"
+        #Sentiment: Neutral
+        ####
+        #Tweet: "This new music video was incredibile"
+        #Sentiment:""",
+        #        """Translate English to French:
+        #
+        #sea otter => loutre de mer
+        #
+        #peppermint => menthe poivrée
+        #
+        #plush girafe => girafe peluche
+        #
+        #cheese =>""",
     ]
     for _ in range(2):
         with torch.no_grad():
-            results = generator.generate(
-                prompts, max_gen_len=256, temperature=temperature, top_p=top_p
-            )
+            results = generator.generate(prompts,
+                                         256,
+                                         xm.xla_device(),
+                                         temperature=temperature,
+                                         top_p=top_p)
 
         for result in results:
             print(result)
@@ -150,7 +160,9 @@ def _fn(
     n_heads: int = 32,
     quant: bool = False,
 ):
-    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant)
+    main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size,
+         ckpt_dir, dim, n_layers, n_heads, quant)
+
 
 def mp_main(
     mp: bool,
@@ -166,9 +178,13 @@ def mp_main(
     quant: bool = False,
 ):
     if mp:
-        xmp.spawn(_fn, args=(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant))
+        xmp.spawn(_fn,
+                  args=(tokenizer_path, temperature, top_p, max_seq_len,
+                        max_batch_size, ckpt_dir, dim, n_layers, n_heads,
+                        quant))
     else:
-        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size, ckpt_dir, dim, n_layers, n_heads, quant)
+        main(tokenizer_path, temperature, top_p, max_seq_len, max_batch_size,
+             ckpt_dir, dim, n_layers, n_heads, quant)
 
 
 if __name__ == "__main__":

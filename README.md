@@ -1,4 +1,4 @@
-# LLaMA 
+# LLaMA
 
 This repository is intended as a minimal, hackable and readable example to load [LLaMA](https://ai.facebook.com/blog/large-language-model-llama-meta-ai/) ([arXiv](https://arxiv.org/abs/2302.13971v1)) models and run inference.
 In order to download the checkpoints and tokenizer, fill this [google form](https://forms.gle/jk851eBVbX1m5TAv5)
@@ -81,6 +81,23 @@ Different models have different original_mp values:
 | 13B    | 2           |
 | 33B    | 4           |
 | 65B    | 8           |
+
+### XLA GPU
+
+`example_xla.py` can also be ran on GPUs with XLA:GPU.
+```
+PJRT_DEVICE=GPU GPU_NUM_DEVICES=4 python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --dim 4096 --n_heads 32 --n_layers 32 --mp True
+```
+
+## CUDA
+
+`example_cuda.py` is provided to produce CUDA (using Inductor by default) results as the same format as `example_xla.py` such that one can easily compare
+results among XLA:TPU, XLA:GPU, CUDA eager, CUDA Inductor.
+
+Here is how you can use it:
+```
+USE_CUDA=1 python3 example_cuda.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --dim 4096 --n_heads 32 --n_layers 32 --mp True
+```
 
 ## FAQ
 
