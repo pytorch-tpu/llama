@@ -76,10 +76,11 @@ class LLaMA:
 
         decoding_start_time = time.time()
         prev_pos = 0
+        scale_factor = 8
         while prev_pos < min_prompt_size:
             section_len = 1
-            while prev_pos + section_len * 2 <= min_prompt_size:
-                section_len *= 2
+            while prev_pos + section_len * scale_factor <= min_prompt_size:
+                section_len *= scale_factor
             cur_pos = prev_pos + section_len
             print(f"Processing prompt pos [{prev_pos}, {cur_pos}), section length {section_len}")
             cur_pos_tensor = torch.tensor(cur_pos).to(device)
