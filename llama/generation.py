@@ -97,9 +97,8 @@ class LLaMA:
         xm.mark_step()
 
         decoding_start_time = time.time()
-        min_section_len = 16
         prev_pos = 0
-        while prev_pos + min_section_len - 1 < min_prompt_size:
+        while prev_pos < min_prompt_size:
             section_len = 1
             while prev_pos + section_len * 2 <= min_prompt_size:
                 section_len *= 2
@@ -130,7 +129,7 @@ class LLaMA:
             xm.mark_step()
         self.model.cache_kvs = cache_kvs
         print(f"Processed prompts with {min_prompt_size} to {max_prompt_size} tokens, and generated {total_len - max_prompt_size} tokens")
-        print(f"Decoded {total_len-1} tokens in {time.time() - decoding_start_time:.5f} seconds")
+        print(f"Totally decoded {total_len - 1} tokens in {time.time() - decoding_start_time:.5f} seconds")
 
         decoded = []
         for i, t in enumerate(tokens.tolist()):
