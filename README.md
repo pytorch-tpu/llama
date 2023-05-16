@@ -26,8 +26,8 @@ Download repo and install dependencies on the TPU VM:
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --project ${PROJECT} --zone ${ZONE} --worker=all --command='
 git clone --branch stable https://github.com/pytorch-tpu/llama.git
 cd llama
-pip install -r requirements.txt
-pip install -e .
+pip3 install -r requirements.txt
+pip3 install -e .
 '
 ```
 
