@@ -73,7 +73,10 @@ def load(
                                       **params)
     tokenizer = Tokenizer(model_path=tokenizer_path)
     model_args.vocab_size = tokenizer.n_words
-    torch.set_default_tensor_type(torch.BFloat16Tensor)
+    if USE_CUDA:
+        torch.set_default_tensor_type(torch.cuda.HalfTensor)
+    else:
+        torch.set_default_tensor_type(torch.BFloat16Tensor)
     model = Transformer(model_args)
     if ckpt_dir:
         model.load_state_dict(checkpoint, strict=False)
