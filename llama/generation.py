@@ -21,13 +21,13 @@ class LLaMA:
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor, 
                             input_pos_tensor, output_pos_tensor, cache_kvs,
-                            temperature_tensor, top_p_tensor):
+                            temperature_tensor, top_p_tensor, with_temp):
         logits, cache_kvs = self.model(input_tokens, input_pos_tensor, output_pos_tensor, cache_kvs)
-        #if temperature_tensor.item() > 0:
-        probs = torch.softmax(logits / temperature_tensor, dim=-1)
-        next_token = sample_top_p(probs, top_p_tensor)
-        #else:
-        #    next_token = torch.argmax(logits, dim=-1)
+        if with_temp:
+            probs = torch.softmax(logits / temperature_tensor, dim=-1)
+            next_token = sample_top_p(probs, top_p_tensor)
+        else:
+            next_token = torch.argmax(logits, dim=-1)
         next_token = next_token.reshape(-1)
         # only replace token if prompt has already been generated
         input_text_mask_tmp = input_text_mask.index_select(1, cur_pos_tensor).squeeze(dim=1)
@@ -97,7 +97,7 @@ class LLaMA:
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
                     input_pos_tensor, output_pos_tensor, cache_kvs,
-                    temperature_tensor, top_p_tensor
+                    temperature_tensor, top_p_tensor, temperature > 0
                 )
             xm.mark_step()
 
@@ -109,7 +109,7 @@ class LLaMA:
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
                     input_pos_tensor, output_pos_tensor, cache_kvs,
-                    temperature_tensor, top_p_tensor
+                    temperature_tensor, top_p_tensor, temperature > 0
                 )
             xm.mark_step()
         self.model.cache_kvs = cache_kvs
