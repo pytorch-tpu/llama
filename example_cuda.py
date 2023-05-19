@@ -21,6 +21,9 @@ def setup_model_parallel(rank, world_size) -> Tuple[int, int]:
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     set_g_group()
+    # We need to set this otherwise set_default_tensor_type in example_xla.py
+    # will set all devices to cuda:0.
+    torch.cuda.set_device(rank)
 
     # seed must be the same in all processes
     torch.manual_seed(1)
