@@ -74,6 +74,7 @@ class LLaMA:
 
         temperature_tensor = torch.tensor(temperature).to(device)
         top_p_tensor = torch.tensor(top_p).to(device)
+        with_temp = temperature > 0
 
         cache_kvs = self.model.cache_kvs
         xm.mark_step()
@@ -97,7 +98,7 @@ class LLaMA:
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
                     input_pos_tensor, output_pos_tensor, cache_kvs,
-                    temperature_tensor, top_p_tensor, temperature > 0
+                    temperature_tensor, top_p_tensor, with_temp
                 )
             xm.mark_step()
 
@@ -109,7 +110,7 @@ class LLaMA:
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
                     input_pos_tensor, output_pos_tensor, cache_kvs,
-                    temperature_tensor, top_p_tensor, temperature > 0
+                    temperature_tensor, top_p_tensor, with_temp
                 )
             xm.mark_step()
         self.model.cache_kvs = cache_kvs
