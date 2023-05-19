@@ -23,11 +23,11 @@ class LLaMA:
                             input_pos_tensor, output_pos_tensor, cache_kvs,
                             temperature_tensor, top_p_tensor):
         logits, cache_kvs = self.model(input_tokens, input_pos_tensor, output_pos_tensor, cache_kvs)
-        if temperature_tensor.item() > 0:
-            probs = torch.softmax(logits / temperature_tensor, dim=-1)
-            next_token = sample_top_p(probs, top_p_tensor)
-        else:
-            next_token = torch.argmax(logits, dim=-1)
+        #if temperature_tensor.item() > 0:
+        probs = torch.softmax(logits / temperature_tensor, dim=-1)
+        next_token = sample_top_p(probs, top_p_tensor)
+        #else:
+        #    next_token = torch.argmax(logits, dim=-1)
         next_token = next_token.reshape(-1)
         # only replace token if prompt has already been generated
         input_text_mask_tmp = input_text_mask.index_select(1, cur_pos_tensor).squeeze(dim=1)
