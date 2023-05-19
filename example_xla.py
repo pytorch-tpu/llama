@@ -98,6 +98,7 @@ def main(
         ckpt_dir, tokenizer_path, rank, world_size, max_seq_len, max_batch_size, dim, n_layers, n_heads
     )
 
+    prompts = [generator.tokenizer.decode([8]*prompt_len) for _ in range(max_batch_size)]
     # prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
         # "I believe the meaning of life is",
@@ -125,19 +126,10 @@ def main(
 #
 #cheese =>""",
     # ]
-
-    pairs = []
-    for l in [1500]:
-        for t in [0.1, 0.5, 0]:
-            for p in [0.8, 0.9]:
-                pairs.append([l, t, p])
-
-    for l, t, p in pairs:
-        print(l, t, p)
-        prompts = [generator.tokenizer.decode([8]*l) for _ in range(max_batch_size)]
+    for _ in range(2):
         with torch.no_grad():
             results = generator.generate(
-                prompts, max_gen_len=max_gen_len, temperature=t, top_p=p
+                prompts, max_gen_len=max_gen_len, temperature=temperature, top_p=top_p
             )
 
         for result in results:
