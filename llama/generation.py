@@ -72,6 +72,8 @@ class LLaMA:
         tokens = tokens.to(device)
         input_text_mask = tokens != self.tokenizer.pad_id
 
+        # Passing tensors instead of floats into self._generate_one_token_fn,
+        # so that different values would not trigger compilations of new graphs
         temperature_tensor = torch.tensor(temperature).to(device)
         top_p_tensor = torch.tensor(top_p).to(device)
         with_temp = temperature > 0
