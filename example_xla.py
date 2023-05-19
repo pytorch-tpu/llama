@@ -133,6 +133,7 @@ def main(
                 pairs.append([l, t, p])
 
     for l, t, p in pairs:
+        print(l, t, p)
         prompts = [generator.tokenizer.decode([8]*l) for _ in range(max_batch_size)]
         with torch.no_grad():
             results = generator.generate(
