@@ -183,8 +183,9 @@ def my_gather(input_: torch.Tensor, groups, world_size, rank) -> torch.Tensor:
         idx = input_.dim() - 1 - last_dim
         padding[2 * idx] = left * size
         padding[2 * idx + 1] = right * size
-        output = torch.ops.c10d_functional.all_reduce(F.pad(input_, padding), "sum", TAG,
-                                                      RANKSET, GROUP_SIZE)
+        output = torch.ops.c10d_functional.all_reduce(F.pad(input_,
+                                                            padding), "sum",
+                                                      TAG, RANKSET, GROUP_SIZE)
     else:
         output = xm.all_gather(input_, dim=-1, groups=groups)
 
