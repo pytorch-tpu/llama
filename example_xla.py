@@ -127,9 +127,9 @@ def main(
     # ]
 
     pairs = []
-    for l in [1500, 1600, 100, 500, 800]:
-        for t in [0.1, 0.5, 0.8]:
-            for p in [0.8, 0.8]:
+    for l in [1500]:
+        for t in [0.1, 0.5]:
+            for p in [0.8, 0.9]:
                 pairs.append([l, t, p])
 
     for l, t, p in pairs:
