@@ -20,11 +20,12 @@ class LLaMA:
                                                     backend="torchxla_trace_once", fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask, cur_pos_tensor, 
-                            input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p):
+                            input_pos_tensor, output_pos_tensor, cache_kvs,
+                            temperature_tensor, top_p_tensor, with_temp):
         logits, cache_kvs = self.model(input_tokens, input_pos_tensor, output_pos_tensor, cache_kvs)
-        if temperature > 0:
-            probs = torch.softmax(logits / temperature, dim=-1)
-            next_token = sample_top_p(probs, top_p)
+        if with_temp:
+            probs = torch.softmax(logits / temperature_tensor, dim=-1)
+            next_token = sample_top_p(probs, top_p_tensor)
         else:
             next_token = torch.argmax(logits, dim=-1)
         next_token = next_token.reshape(-1)
@@ -71,6 +72,12 @@ class LLaMA:
         tokens = tokens.to(device)
         input_text_mask = tokens != self.tokenizer.pad_id
 
+        # Passing tensors instead of floats into self._generate_one_token_fn,
+        # so that different values would not trigger compilations of new graphs
+        temperature_tensor = torch.tensor(temperature).to(device)
+        top_p_tensor = torch.tensor(top_p).to(device)
+        with_temp = temperature > 0
+
         cache_kvs = self.model.cache_kvs
         xm.mark_step()
 
@@ -92,7 +99,8 @@ class LLaMA:
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
-                    input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p
+                    input_pos_tensor, output_pos_tensor, cache_kvs,
+                    temperature_tensor, top_p_tensor, with_temp
                 )
             xm.mark_step()
 
@@ -103,7 +111,8 @@ class LLaMA:
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
-                    input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p
+                    input_pos_tensor, output_pos_tensor, cache_kvs,
+                    temperature_tensor, top_p_tensor, with_temp
                 )
             xm.mark_step()
         self.model.cache_kvs = cache_kvs
@@ -133,7 +142,7 @@ class LLaMA:
 def sample_top_p(probs, p):
     probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
     probs_sum = torch.cumsum(probs_sort, dim=-1)
-    mask = probs_sum - probs_sort > p
+    mask = (probs_sum - probs_sort) > p
     probs_sort = torch.where(mask, 0.0, probs_sort)
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
     next_token = torch.multinomial(probs_sort, num_samples=1)
