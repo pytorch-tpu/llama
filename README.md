@@ -84,7 +84,11 @@ Different models have different original_mp values:
 
 ### XLA GPU
 
-`example_xla.py` can also be ran on GPUs with XLA:GPU.
+`example_xla.py` can also be ran on GPUs with XLA:GPU. To do that, you need different wheels than the above such
+that you have XLA:GPU support. Please refer to [pytorch/xla](https://github.com/pytorch/xla#wheel) repo to download
+a suitable GPU nightly wheel for your environment. We use the one on 20230422.
+
+After that, you can run the following the command:
 ```
 PJRT_DEVICE=GPU GPU_NUM_DEVICES=4 python3 example_xla.py --tokenizer_path $TOKENIZER_PATH --max_seq_len 256 --max_batch_size 1 --temperature 0.8 --dim 4096 --n_heads 32 --n_layers 32 --mp True
 ```
@@ -92,7 +96,8 @@ PJRT_DEVICE=GPU GPU_NUM_DEVICES=4 python3 example_xla.py --tokenizer_path $TOKEN
 ## CUDA
 
 `example_cuda.py` is provided to produce CUDA (using Inductor by default) results as the same format as `example_xla.py` such that one can easily compare
-results among XLA:TPU, XLA:GPU, CUDA eager, CUDA Inductor.
+results among XLA:TPU, XLA:GPU, CUDA eager, CUDA Inductor. In this case, you can just follow https://pytorch.org/ to
+download a CUDA nightly. We use the one on 20230422.
 
 Here is how you can use it:
 ```
