@@ -36,12 +36,13 @@ class LLaMA:
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask,
                             cur_pos_tensor, input_pos_tensor,
-                            output_pos_tensor, cache_kvs, temperature, top_p):
+                            output_pos_tensor, cache_kvs, temperature_tensor,
+                            top_p_tensor, with_temp):
         logits, cache_kvs = self.model(input_tokens, input_pos_tensor,
                                        output_pos_tensor, cache_kvs)
-        if temperature > 0:
-            probs = torch.softmax(logits / temperature, dim=-1)
-            next_token = sample_top_p(probs, top_p)
+        if with_temp:
+            probs = torch.softmax(logits / temperature_tensor, dim=-1)
+            next_token = sample_top_p(probs, top_p_tensor)
         else:
             next_token = torch.argmax(logits, dim=-1)
         next_token = next_token.reshape(-1)
@@ -52,7 +53,8 @@ class LLaMA:
         next_token = torch.where(input_text_mask_tmp, tokens_tmp, next_token)
         next_token = next_token.unsqueeze(1)
         tokens = tokens.index_copy(1, cur_pos_tensor, next_token)
-        input_pos_tensor = input_pos_tensor[-1:] + 1
+        # prepare for the next iteration
+        input_pos_tensor = cur_pos_tensor.unsqueeze(0)
         cur_pos_tensor = cur_pos_tensor + 1
         output_pos_tensor = cur_pos_tensor - 1
         input_tokens = tokens.index_select(1, input_pos_tensor)
@@ -78,35 +80,76 @@ class LLaMA:
             self.tokenizer.encode(x, bos=bos, eos=False) for x in prompts
         ]
 
-        total_len = params.max_seq_len
+        min_prompt_size = min([len(t) for t in prompt_tokens])
+        max_prompt_size = max([len(t) for t in prompt_tokens])
+        assert min_prompt_size >= 1 and max_prompt_size < params.max_seq_len
 
-        tokens = torch.full((params.max_batch_size, total_len),
+        total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
+
+        tokens = torch.full((params.max_batch_size, params.max_seq_len),
                             self.tokenizer.pad_id).long()
         for k, t in enumerate(prompt_tokens):
             tokens[k, :len(t)] = torch.tensor(t).long()
         tokens = tokens.to(device)
         input_text_mask = tokens != self.tokenizer.pad_id
 
-        start_pos = 1
-        cur_pos_tensor = torch.tensor(start_pos).to(device)
-        input_pos_tensor = torch.arange(0, start_pos).to(device)
-        output_pos_tensor = cur_pos_tensor - 1
-        input_tokens = tokens.index_select(1, input_pos_tensor)
+        # Passing tensors instead of floats into self._generate_one_token_fn,
+        # so that different values would not trigger compilations of new graphs
+        temperature_tensor = torch.tensor(float(temperature)).to(device)
+        top_p_tensor = torch.tensor(float(top_p)).to(device)
+        with_temp = temperature > 0
+
         cache_kvs = self.model.cache_kvs
         if device.type == "xla":
-            xm.mark_step(wait=True)
+            xm.mark_step()
 
         decoding_start_time = time.time()
-        for _ in range(start_pos, total_len):
+        prev_pos = 0
+        buckets = [128, 256, 384, 512]
+        assert params.max_seq_len % buckets[-1] == 0
+        while prev_pos < min_prompt_size:
+            remaining = min_prompt_size - prev_pos
+            section_len = 0
+            for bucket in buckets:
+                if bucket >= remaining:
+                    section_len = bucket
+                    break
+            if section_len == 0:
+                section_len = buckets[-1]
+
+            cur_pos = min(min_prompt_size, prev_pos + section_len)
+            print(f"Processing prompt pos [{prev_pos}, {prev_pos + section_len}), section length {section_len}, cur_pos {cur_pos}")
+            cur_pos_tensor = torch.tensor(cur_pos).to(device)
+            input_pos_tensor = torch.arange(prev_pos, prev_pos + section_len).to(device)
+            output_pos_tensor = cur_pos_tensor - 1
+            input_tokens = tokens.index_select(1, input_pos_tensor)
+            if device.type == "xla":
+                xm.mark_step()
+
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask, cur_pos_tensor,
-                    input_pos_tensor, output_pos_tensor, cache_kvs, temperature, top_p
+                    input_pos_tensor, output_pos_tensor, cache_kvs,
+                    temperature_tensor, top_p_tensor, with_temp
+                )
+            if device.type == "xla":
+                xm.mark_step()
+
+            prev_pos = cur_pos
+
+        assert cur_pos_tensor.item() == prev_pos + 1 and prev_pos == min_prompt_size
+        for _ in range(prev_pos + 1, total_len):
+            tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, cache_kvs \
+                = self._generate_one_token_fn(
+                    tokens, input_tokens, input_text_mask, cur_pos_tensor,
+                    input_pos_tensor, output_pos_tensor, cache_kvs,
+                    temperature_tensor, top_p_tensor, with_temp
                 )
             if device.type == "xla":
                 xm.mark_step()
         self.model.cache_kvs = cache_kvs
-        print(f"Decoded in {time.time() - decoding_start_time:.5f} seconds")
+        print(f"Processed prompts with {min_prompt_size} to {max_prompt_size} tokens, and generated {total_len - max_prompt_size} tokens")
+        print(f"Totally decoded {total_len - 1} tokens in {time.time() - decoding_start_time:.5f} seconds")
 
         decoded = []
         for i, t in enumerate(tokens.tolist()):
@@ -131,7 +174,7 @@ class LLaMA:
 def sample_top_p(probs, p):
     probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
     probs_sum = torch.cumsum(probs_sort, dim=-1)
-    mask = probs_sum - probs_sort > p
+    mask = (probs_sum - probs_sort) > p
     probs_sort = torch.where(mask, 0.0, probs_sort)
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
     next_token = torch.multinomial(probs_sort, num_samples=1)
