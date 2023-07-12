@@ -61,7 +61,8 @@ class LLaMA:
 
         min_prompt_size = min([len(t) for t in prompt_tokens])
         max_prompt_size = max([len(t) for t in prompt_tokens])
-        assert min_prompt_size >= 1 and max_prompt_size < params.max_seq_len
+        assert min_prompt_size >= 1, f"Prompt size must be >= 1"
+        assert max_prompt_size < params.max_seq_len, f"Prompt size {max_prompt_size} exceeds max sequence length of {params.max_seq_len}"
 
         total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
 
