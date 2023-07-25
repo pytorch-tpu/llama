@@ -184,6 +184,9 @@ class Llama:
             if all(eos_reached):
                 break
 
+        print(f"Processed prompts with {min_prompt_len} to {max_prompt_len} tokens, and generated {prev_pos + 1 - max_prompt_len} tokens")
+        print(f"Totally decoded {total_len - 1} tokens in {time.time() - decoding_start_time:.5f} seconds")
+
         if logprobs:
             token_logprobs = token_logprobs.tolist()
         out_tokens, out_logprobs = [], []
