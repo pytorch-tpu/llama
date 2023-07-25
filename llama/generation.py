@@ -10,14 +10,16 @@ from typing import List, Literal, Optional, Tuple, TypedDict
 
 import torch
 import torch.nn.functional as F
-from fairscale.nn.model_parallel.initialize import (
-    get_model_parallel_rank,
-    initialize_model_parallel,
-    model_parallel_is_initialized,
-)
 
 from llama.model import ModelArgs, Transformer
 from llama.tokenizer import Tokenizer
+from llama.xla_model_parallel import get_model_parallel_rank, get_model_parallel_world_size, set_g_group
+
+USE_CUDA = os.environ.get('USE_CUDA', False)
+
+# Some how xla init will slow down the CUDA speed.
+if not USE_CUDA:
+    import torch_xla.core.xla_model as xm
 
 Role = Literal["system", "user", "assistant"]
 
@@ -58,20 +60,30 @@ class Llama:
         max_batch_size: int,
         model_parallel_size: Optional[int] = None,
     ) -> "Llama":
-        if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group("nccl")
-        if not model_parallel_is_initialized():
-            if model_parallel_size is None:
-                model_parallel_size = int(os.environ.get("WORLD_SIZE", 1))
-            initialize_model_parallel(model_parallel_size)
-
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        torch.cuda.set_device(local_rank)
+        # if not model_parallel_is_initialized():
+        #     if model_parallel_size is None:
+        #         model_parallel_size = int(os.environ.get("WORLD_SIZE", 1))
+        #     initialize_model_parallel(model_parallel_size)
 
         # seed must be the same in all processes
+        if USE_CUDA:
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = '12356'
+            if not torch.distributed.is_initialized():
+                torch.distributed.init_process_group("nccl", rank=int(os.environ.get("RANK", 0)), world_size=int(os.environ.get("WORLD_SIZE", 1)))
+            set_g_group()
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            device = torch.device("cuda", local_rank)
+            torch.cuda.set_device(local_rank)
+        else:
+            device = xm.xla_device()
+            xm.set_rng_state(1, device=device)
         torch.manual_seed(1)
 
-        if local_rank > 0:
+        rank = get_model_parallel_rank()
+        model_parallel_size = get_model_parallel_world_size()
+
+        if rank > 0:
             sys.stdout = open(os.devnull, "w")
 
         start_time = time.time()
@@ -92,18 +104,23 @@ class Llama:
         )
         tokenizer = Tokenizer(model_path=tokenizer_path)
         model_args.vocab_size = tokenizer.n_words
-        torch.set_default_tensor_type(torch.cuda.HalfTensor)
+        if USE_CUDA:
+            torch.set_default_tensor_type(torch.cuda.HalfTensor)
+        else:
+            torch.set_default_tensor_type(torch.BFloat16Tensor)
         model = Transformer(model_args)
         model.load_state_dict(checkpoint, strict=False)
+        model = model.to(device)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
 
-        return Llama(model, tokenizer)
+        return Llama(model, tokenizer, device)
 
-    def __init__(self, model: Transformer, tokenizer: Tokenizer):
+    def __init__(self, model: Transformer, tokenizer: Tokenizer, device: torch.device):
         self.model = model
         self.tokenizer = tokenizer
+        self.device = device
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def generate(
         self,
         prompt_tokens: List[List[int]],
@@ -123,14 +140,19 @@ class Llama:
         total_len = min(params.max_seq_len, max_gen_len + max_prompt_len)
 
         pad_id = self.tokenizer.pad_id
-        tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device="cuda")
+        tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long)
         for k, t in enumerate(prompt_tokens):
-            tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device="cuda")
+            tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long)
+        tokens = tokens.to(self.device)
         if logprobs:
             token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
 
+        if self.device.type == "xla":
+            xm.mark_step()
+
+        decoding_start_time = time.time()
         prev_pos = 0
-        eos_reached = torch.tensor([False] * bsz, device="cuda")
+        eos_reached = torch.tensor([False] * bsz, device=self.device)
         input_text_mask = tokens != pad_id
         for cur_pos in range(min_prompt_len, total_len):
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
@@ -157,8 +179,13 @@ class Llama:
                 next_token == self.tokenizer.eos_id
             )
             prev_pos = cur_pos
+            if self.device.type == "xla":
+                xm.mark_step()
             if all(eos_reached):
                 break
+
+        print(f"Processed prompts with {min_prompt_len} to {max_prompt_len} tokens, and generated {prev_pos + 1 - max_prompt_len} tokens")
+        print(f"Totally decoded {total_len - 1} tokens in {time.time() - decoding_start_time:.5f} seconds")
 
         if logprobs:
             token_logprobs = token_logprobs.tolist()
