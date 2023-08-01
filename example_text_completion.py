@@ -27,6 +27,7 @@ def main(
     max_batch_size: int = 4,
     dynamo: str = "openxla_eval",
     repeat: int = 2,
+    spmd: bool = True,
 ):
     if not USE_CUDA:
         server = xp.start_server(9012)
@@ -36,6 +37,7 @@ def main(
         max_seq_len=max_seq_len,
         max_batch_size=max_batch_size,
         dynamo=dynamo,
+        spmd=spmd,
     )
 
     prompts = [
@@ -89,12 +91,13 @@ def _fn(
     max_batch_size: int = 4,
     dynamo: str = "openxla_eval",
     repeat: int = 2,
+    spmd: bool = True,
 ):
     if USE_CUDA:
         os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
         os.environ['RANK'] = str(idx)
         os.environ['LOCAL_RANK'] = str(idx)
-    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat)
+    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd)
 
 
 def mp_main(
@@ -108,6 +111,7 @@ def mp_main(
     max_batch_size: int = 4,
     dynamo: str = "openxla_eval",
     repeat: int = 2,
+    spmd: bool = True,
 ):
     # Sanity-check the combination of USE_CUDA envvar and --dynamo flag.
     if USE_CUDA:
@@ -124,9 +128,9 @@ def mp_main(
         else:
             kwargs = {}
         xmp.spawn(_fn,
-                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat), **kwargs)
+                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd), **kwargs)
     else:
-        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat)
+        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd)
 
 
 if __name__ == "__main__":
