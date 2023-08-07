@@ -40,6 +40,8 @@ def main(
         spmd=spmd,
     )
 
+    print(f'[WONJOO] max_batch_size={max_batch_size}')
+
     prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
         "I believe the meaning of life is",
@@ -78,6 +80,8 @@ def main(
                 print(prompt)
                 print(f"> {result['generation']}")
                 print("\n==================================\n")
+
+    print("Finished!")
 
 
 def _fn(
