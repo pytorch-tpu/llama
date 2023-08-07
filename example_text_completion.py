@@ -25,16 +25,21 @@ def main(
     max_gen_len: int = 64,
     max_batch_size: int = 4,
     dynamo: bool = True,
+    spmd: bool = True,
 ):
     if not USE_CUDA:
-        server = xp.start_server(9012, only_on_master=False)
+        # server = xp.start_server(9012, only_on_master=False)
+        pass
     generator = Llama.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
         max_seq_len=max_seq_len,
         max_batch_size=max_batch_size,
         dynamo=dynamo,
+        spmd=spmd,
     )
+
+    print(f'[WONJOO] max_batch_size={max_batch_size}')
 
     prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
@@ -53,6 +58,13 @@ def main(
 #        plush girafe => girafe peluche
 #        cheese =>""",
     ]
+
+    import time
+    print("About to start in 15 seconds")
+    server = xp.start_server(9012, only_on_master=False)
+    time.sleep(15)
+    print("Starting!")
+
     for _ in range(2):
         with torch.no_grad():
             results = generator.text_completion(
@@ -66,6 +78,8 @@ def main(
                 print(f"> {result['generation']}")
                 print("\n==================================\n")
 
+    print("Finished!")
+
 
 def _fn(
     idx,
@@ -77,12 +91,13 @@ def _fn(
     max_gen_len: int = 64,
     max_batch_size: int = 4,
     dynamo: bool = True,
+    spmd: bool = True,
 ):
     if USE_CUDA:
         os.environ['WORLD_SIZE'] = torch.cuda.device_count()
         os.environ['RANK'] = idx
         os.environ['LOCAL_RANK'] = idx
-    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
+    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, spmd)
 
 
 def mp_main(
@@ -95,6 +110,7 @@ def mp_main(
     max_gen_len: int = 64,
     max_batch_size: int = 4,
     dynamo: bool = True,
+    spmd: bool = True,
 ):
     if mp:
         if USE_CUDA:
@@ -103,9 +119,9 @@ def mp_main(
         else:
             kwargs = {}
         xmp.spawn(_fn,
-                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo), **kwargs)
+                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, spmd), **kwargs)
     else:
-        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
+        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, spmd)
 
 
 if __name__ == "__main__":
