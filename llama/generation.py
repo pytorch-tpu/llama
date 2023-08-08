@@ -134,17 +134,14 @@ class Llama:
         self._generate_one_token_fn = self._generate_one_token
 
         if spmd:
-            num_devices = xr.global_runtime_device_count()  # updated way to get device count
-            # num_devices = 8 # hard-coded for v5-8
+            num_devices = xr.global_runtime_device_count()  # Should be 8 on v5-8
             device_ids = np.arange(num_devices)
-            x_dim = 2 # hard-coded for v5-8
-            yz_dim = 4 # hard-coded for v5-8
 
             # manually shard the kv cache
-            four_d_mesh = xs.Mesh(device_ids, (1, 1, x_dim, yz_dim))
+            four_d_mesh = xs.Mesh(device_ids, (1, 1, num_devices, 1))
             for layer in model.layers:
-                xs.mark_sharding(layer.attention.cache_k, four_d_mesh, (0, 1, 2, None))
-                xs.mark_sharding(layer.attention.cache_v, four_d_mesh, (0, 1, 2, None))
+                xs.mark_sharding(layer.attention.cache_k, four_d_mesh, (0, 1, 2, 3))
+                xs.mark_sharding(layer.attention.cache_v, four_d_mesh, (0, 1, 2, 3))
 
             col_mesh = xs.Mesh(device_ids, (1, num_devices))
             row_mesh = xs.Mesh(device_ids, (num_devices, 1))
@@ -166,6 +163,8 @@ class Llama:
                     xs.mark_sharding(layer.weight, col_mesh, (0, 1))
 
             # Sharding strategy for 2D sharding
+            # x_dim = 2 # hard-coded for v5-8
+            # yz_dim = 4 # hard-coded for v5-8
             # two_d_mesh = xs.Mesh(device_ids, (x_dim, yz_dim))
             # two_d_mesh_transpose = xs.Mesh(device_ids, (yz_dim, x_dim))
             # for name, layer in model.named_modules():
@@ -274,8 +273,8 @@ class Llama:
         top_p_tensor = torch.tensor(float(top_p)).to(self.device)
         with_temp = temperature > 0
 
-        if self.device.type == "xla":
-            xm.mark_step()
+        # if self.device.type == "xla":
+        #     xm.mark_step()
 
         decoding_start_time = time.time()
         prev_pos = 0
@@ -297,8 +296,8 @@ class Llama:
             input_pos_tensor = torch.arange(prev_pos, prev_pos + section_len).to(self.device)
             output_pos_tensor = cur_pos_tensor - 1
             input_tokens = tokens.index_select(1, input_pos_tensor)
-            if self.device.type == "xla":
-                xm.mark_step()
+            # if self.device.type == "xla":
+            #     xm.mark_step()
 
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, token_logprobs, eos_reached \
                 = self._generate_one_token_fn(
@@ -307,8 +306,8 @@ class Llama:
                     output_pos_tensor, temperature_tensor,
                     top_p_tensor, with_temp, logprobs, token_logprobs, eos_reached, pad_id
                 )
-            if self.device.type == "xla":
-                xm.mark_step()
+            # if self.device.type == "xla":
+            #     xm.mark_step()
 
             prev_pos = cur_pos
 
@@ -321,8 +320,8 @@ class Llama:
                     output_pos_tensor, temperature_tensor,
                     top_p_tensor, with_temp, logprobs, token_logprobs, eos_reached, pad_id
                 )
-            if self.device.type == "xla":
-                xm.mark_step()
+            # if self.device.type == "xla":
+            #     xm.mark_step()
             if cur_pos % 10 == 0:
                 if all(eos_reached):
                     break
