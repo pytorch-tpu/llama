@@ -428,8 +428,8 @@ class ColumnParallelLinear(torch.nn.Module):
                                                        self.rank)
         # Matrix multiply.
         if self.quant:
-            output_parallel = F.linear(input_parallel, self.weight, self.bias)
-            output_parallel = output_parallel * self.weight_scaler
+            scaled_weight = self.weight * self.weight_scaler
+            output_parallel = F.linear(input_parallel, scaled_weight, self.bias)
         else:
             output_parallel = F.linear(input_parallel, self.weight, self.bias)
         if self.gather_output:
@@ -552,8 +552,8 @@ class RowParallelLinear(torch.nn.Module):
                 input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
         if self.quant:
-            output_parallel = F.linear(input_parallel, self.weight, self.bias)
-            output_parallel = output_parallel * self.weight_scaler
+            scaled_weight = self.weight * self.weight_scaler
+            output_parallel = F.linear(input_parallel, scaled_weight, self.bias)
         else:
             output_parallel = F.linear(input_parallel, self.weight)
         # All-reduce across all the partitions.
