@@ -361,6 +361,7 @@ class ColumnParallelLinear(torch.nn.Module):
         rank: Optional[int] = None,
         groups: Optional[List] = None,
         quant: bool = False,
+        gpu: bool = False
     ) -> None:
         super(ColumnParallelLinear, self).__init__()
 
@@ -378,6 +379,7 @@ class ColumnParallelLinear(torch.nn.Module):
         self.out_features = out_features
         self.gather_output = gather_output
         self.quant = quant
+        self.gpu = gpu
         # Divide the weight matrix along the last dimension.
         self.output_size_per_partition = divide_and_check_no_remainder(
             out_features, self.world_size)
@@ -427,9 +429,13 @@ class ColumnParallelLinear(torch.nn.Module):
                                                        self.world_size,
                                                        self.rank)
         # Matrix multiply.
-        if self.quant:
+        if self.quant and self.gpu:
+            # GPUs do not support mixed int8 bf16 computation. Scale int8 weights to bf16 before linear.
             scaled_weight = self.weight * self.weight_scaler
             output_parallel = F.linear(input_parallel, scaled_weight, self.bias)
+        elif self.quant:
+            output_parallel = F.linear(input_parallel, self.weight, self.bias)
+            output_parallel = output_parallel * self.weight_scaler
         else:
             output_parallel = F.linear(input_parallel, self.weight, self.bias)
         if self.gather_output:
@@ -484,6 +490,7 @@ class RowParallelLinear(torch.nn.Module):
         rank: Optional[int] = None,
         groups: Optional[List] = None,
         quant: bool = False,
+        gpu: bool = False,
     ):
         super(RowParallelLinear, self).__init__()
 
@@ -501,6 +508,7 @@ class RowParallelLinear(torch.nn.Module):
         self.out_features = out_features
         self.input_is_parallel = input_is_parallel
         self.quant = quant
+        self.gpu = gpu
         # Divide the weight matrix along the last dimension.
         self.input_size_per_partition = divide_and_check_no_remainder(
             in_features, self.world_size)
@@ -551,9 +559,13 @@ class RowParallelLinear(torch.nn.Module):
             input_parallel = scatter_to_model_parallel_region(
                 input_, self.groups, self.world_size, self.rank)
         # Matrix multiply.
-        if self.quant:
+        if self.quant and self.gpu:
+            # GPUs do not support mixed int8 bf16 computation. Scale int8 weights to bf16 before linear.
             scaled_weight = self.weight * self.weight_scaler
             output_parallel = F.linear(input_parallel, scaled_weight, self.bias)
+        elif self.quant:
+            output_parallel = F.linear(input_parallel, self.weight, self.bias)
+            output_parallel = output_parallel * self.weight_scaler
         else:
             output_parallel = F.linear(input_parallel, self.weight)
         # All-reduce across all the partitions.
