@@ -79,9 +79,11 @@ def _fn(
     dynamo: bool = True,
 ):
     if USE_CUDA:
-        os.environ['WORLD_SIZE'] = torch.cuda.device_count()
-        os.environ['RANK'] = idx
-        os.environ['LOCAL_RANK'] = idx
+        print(f"CUDA available? {torch.cuda.is_available()} idx {idx}")
+        print(f"USE_CUDA world size {torch.cuda.device_count()} idx {idx}")
+        os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
+        os.environ['RANK'] = str(idx)
+        os.environ['LOCAL_RANK'] = str(idx)
     main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
 
 
