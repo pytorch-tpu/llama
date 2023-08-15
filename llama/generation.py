@@ -10,6 +10,7 @@ from typing import List, Literal, Optional, Tuple, TypedDict
 
 import torch
 import torch.nn.functional as F
+import torch_xla
 
 from llama.model import ModelArgs, Transformer
 from llama.tokenizer import Tokenizer
@@ -131,10 +132,11 @@ class Llama:
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
+        self.num_devices = xr.global_runtime_device_count()
         self._generate_one_token_fn = self._generate_one_token
 
         if spmd:
-            num_devices = xr.global_runtime_device_count()  # Should be 8 on v5-8
+            num_devices = self.num_devices  # Should be 8 on v5-8
             device_ids = np.arange(num_devices)
 
             # manually shard the kv cache
@@ -258,7 +260,12 @@ class Llama:
         tokens = torch.full((params.max_batch_size, params.max_seq_len), pad_id, dtype=torch.long)
         for k, t in enumerate(prompt_tokens):
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long)
-        tokens = tokens.to(self.device)
+
+        # load data to devices
+        input_sharding = xs.ShardingSpec(xs.Mesh(np.arange(self.num_devices), (self.num_devices, 1)), (0, 1))
+        xtensors = torch_xla._XLAC._xla_tensors_from_aten([tokens], [str(self.device)], [input_sharding.xla_spec(tokens)])
+        tokens = xtensors[0]
+
         if logprobs:
             token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
         else:
