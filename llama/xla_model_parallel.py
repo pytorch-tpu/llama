@@ -311,6 +311,11 @@ class ParallelEmbedding(torch.nn.Module):
         input_parallel = copy_to_model_parallel_region(input_, self.groups,
                                                        self.world_size,
                                                        self.rank)
+        # print("input", input_parallel)
+        # print("weight shape", torch.numel(self.weight), self.weight.shape)
+        # This is a hack - the first call, input parallel contains a  -1 that generates an assert.
+        # Take the modulus avoid this error 
+        input_parallel = torch.remainder(input_parallel, self.weight.shape[0])
         output_parallel = F.embedding(
             input_parallel,
             self.weight,
