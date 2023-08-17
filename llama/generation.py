@@ -136,7 +136,7 @@ class Llama:
                     self._generate_one_token_fn,
                     backend="torchxla_trace_once",
                     fullgraph=True)
-            
+
     def _generate_one_token(self, tokens, input_tokens, input_text_mask,
                             cur_pos_tensor, input_pos_tensor,
                             output_pos_tensor, temperature_tensor,
@@ -175,7 +175,7 @@ class Llama:
         eos_reached = eos_reached | (~input_text_mask_tmp) & (
             next_token == self.tokenizer.eos_id
         )
-        
+
         return tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, token_logprobs, eos_reached
 
     @torch.no_grad()
