@@ -15,6 +15,7 @@ if USE_CUDA:
 else:
     import torch_xla.debug.profiler as xp
     import torch_xla.distributed.xla_multiprocessing as xmp
+    import torch_xla.core.xla_model as xm
 
 def main(
     ckpt_dir: str,
@@ -28,8 +29,7 @@ def main(
     spmd: bool = True,
 ):
     if not USE_CUDA:
-        # server = xp.start_server(9012, only_on_master=False)
-        pass
+        server = xp.start_server(9012)
     generator = Llama.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
@@ -58,14 +58,16 @@ def main(
 #        plush girafe => girafe peluche
 #        cheese =>""",
     ]
+    for i in range(2):
+        # Automatically takes profiles, let's skip the cold run and only capture warm runs.
+        if i > 0 and not USE_CUDA and xm.is_master_ordinal():
+            import tempfile
+            from threading import Thread
+            profile_logdir = os.environ.get('PROFILE_LOGDIR', tempfile.mkdtemp())
+            profile_duration = int(os.environ.get('PROFILE_DURATION_MS', 20000))
+            trace = lambda: xp.trace('127.0.0.1:9012', profile_logdir, profile_duration)
+            Thread(target=trace).start()
 
-    import time
-    print("About to start in 15 seconds")
-    server = xp.start_server(9012, only_on_master=False)
-    time.sleep(15)
-    print("Starting!")
-
-    for _ in range(2):
         with torch.no_grad():
             results = generator.text_completion(
                 prompts,
