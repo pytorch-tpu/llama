@@ -150,7 +150,7 @@ class Llama:
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                    xs.mark_sharding(layer.weight, row_mesh, (0, 1))
                 if 'attention.' in name:
                     if 'wo' in name:
                         xs.mark_sharding(layer.weight, row_mesh, (0, 1))
