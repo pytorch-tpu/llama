@@ -66,10 +66,6 @@ class Llama:
         dynamo: str = "openxla_eval",
         spmd: bool = True,
     ) -> "Llama":
-        # if not model_parallel_is_initialized():
-        #     if model_parallel_size is None:
-        #         model_parallel_size = int(os.environ.get("WORLD_SIZE", 1))
-        #     initialize_model_parallel(model_parallel_size)
 
         # seed must be the same in all processes
         if USE_CUDA:
@@ -139,51 +135,28 @@ class Llama:
             num_devices = self.num_devices  # Should be 8 on v5-8
             device_ids = np.arange(num_devices)
 
-            # manually shard the kv cache
-            four_d_mesh = xs.Mesh(device_ids, (1, 1, num_devices, 1))
-            for layer in model.layers:
-                xs.mark_sharding(layer.attention.cache_k, four_d_mesh, (0, 1, 2, 3))
-                xs.mark_sharding(layer.attention.cache_v, four_d_mesh, (0, 1, 2, 3))
+            mesh = xs.Mesh(device_ids, (num_devices,))
 
-            col_mesh = xs.Mesh(device_ids, (1, num_devices))
-            row_mesh = xs.Mesh(device_ids, (num_devices, 1))
+            # manually shard the kv cache
+            for layer in model.layers:
+                xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
+                xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, row_mesh, (0, 1))
+                    xs.mark_sharding(layer.weight, mesh, (0, None))
                 if 'attention.' in name:
                     if 'wo' in name:
-                        xs.mark_sharding(layer.weight, row_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, mesh, (0, None))
                     else:
-                        xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, mesh, (None, 0))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, row_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, mesh, (0, None))
                     else:
-                        xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, mesh, (None, 0))
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, col_mesh, (0, 1))
-
-            # Sharding strategy for 2D sharding
-            # x_dim = 2 # hard-coded for v5-8
-            # yz_dim = 4 # hard-coded for v5-8
-            # two_d_mesh = xs.Mesh(device_ids, (x_dim, yz_dim))
-            # two_d_mesh_transpose = xs.Mesh(device_ids, (yz_dim, x_dim))
-            # for name, layer in model.named_modules():
-            #     if 'tok_embeddings' in name:
-            #         xs.mark_sharding(layer.weight, row_mesh, (0, 1))
-            #     if 'attention.' in name:
-            #         if 'wo' in name:
-            #             xs.mark_sharding(layer.weight, two_d_mesh_transpose, (0, 1))
-            #         else:
-            #             xs.mark_sharding(layer.weight, two_d_mesh, (0, 1))
-            #     if 'feed_forward.' in name:
-            #         if 'w2' in name:
-            #             xs.mark_sharding(layer.weight, two_d_mesh_transpose, (0, 1))
-            #         else:
-            #             xs.mark_sharding(layer.weight, two_d_mesh, (0, 1))
-            #     if 'output' in name:
-            #         xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                    xs.mark_sharding(layer.weight, mesh, (None, 0))
 
         if dynamo:
             if USE_CUDA:
@@ -260,8 +233,10 @@ class Llama:
         tokens = torch.full((params.max_batch_size, params.max_seq_len), pad_id, dtype=torch.long)
         for k, t in enumerate(prompt_tokens):
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long)
-
+        tokens = tokens.to(self.device
+                           )
         # # shard the batch dim & load data to devices
+        # # TODO(yeounoh) remove this once the Dynamo+SPMD infra is fixed.
         # input_sharding = xs.ShardingSpec(xs.Mesh(np.arange(self.num_devices), (self.num_devices, 1)), (0, 1))
         # xtensors = torch_xla._XLAC._xla_tensors_from_aten([tokens], [str(self.device)], [input_sharding.xla_spec(tokens)])
         # tokens = xtensors[0]
@@ -303,8 +278,6 @@ class Llama:
             input_pos_tensor = torch.arange(prev_pos, prev_pos + section_len).to(self.device)
             output_pos_tensor = cur_pos_tensor - 1
             input_tokens = tokens.index_select(1, input_pos_tensor)
-            # if self.device.type == "xla":
-            #     xm.mark_step()
 
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, token_logprobs, eos_reached \
                 = self._generate_one_token_fn(
@@ -313,8 +286,6 @@ class Llama:
                     output_pos_tensor, temperature_tensor,
                     top_p_tensor, with_temp, logprobs, token_logprobs, eos_reached, pad_id
                 )
-            # if self.device.type == "xla":
-            #     xm.mark_step()
 
             prev_pos = cur_pos
 
@@ -327,8 +298,6 @@ class Llama:
                     output_pos_tensor, temperature_tensor,
                     top_p_tensor, with_temp, logprobs, token_logprobs, eos_reached, pad_id
                 )
-            # if self.device.type == "xla":
-            #     xm.mark_step()
             if cur_pos % 10 == 0:
                 if all(eos_reached):
                     break
