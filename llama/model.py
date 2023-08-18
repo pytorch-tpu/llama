@@ -199,18 +199,18 @@ class Attention(nn.Module):
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         output = self.wo(output)
 
-        """
-        # Activation output sharding
-        import torch_xla.core.xla_model as xm
-        import torch_xla.experimental.xla_sharding as xs
-        import torch_xla.runtime as xr
-        num_devices = xr.global_runtime_device_count()
-        device_ids = torch.arange(num_devices)
-        model = 8
-        data = num_devices // model
-        data_model_mesh = xs.HybridMesh(ici_mesh_shape=(data, 1, model))
-        xs.mark_sharding(output, data_model_mesh, (0, 1, 2))
-        """
+        # # Activation output sharding
+        # # TODO(yeounoh) remove this after activation sharding support is enabled.
+        # import torch_xla.core.xla_model as xm
+        # import torch_xla.experimental.xla_sharding as xs
+        # import torch_xla.runtime as xr
+        # num_devices = xr.global_runtime_device_count()
+        # device_ids = torch.arange(num_devices)
+        # model = 8
+        # data = num_devices // model
+        # data_model_mesh = xs.HybridMesh(ici_mesh_shape=(data, 1, model))
+        # xs.mark_sharding(output, data_model_mesh, (0, 1, 2))
+
         return output
 
 
