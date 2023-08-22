@@ -271,6 +271,9 @@ class Llama:
 
         print(f"Processed prompts with {min_prompt_len} to {max_prompt_len} tokens, and generated {cur_pos_tensor.item() - max_prompt_len} tokens")
         print(f"Totally decoded {total_len - 1} tokens in {time.time() - decoding_start_time:.5f} seconds")
+        if ((total_len - 1)/({time.time() - decoding_start_time:.5f})) > 47.70 or ((total_len - 1)/({time.time() - decoding_start_time:.5f})) < 6.14:
+            print("Exceeded known limit for warm latency/token threshold")
+            break
 
         if logprobs:
             token_logprobs = token_logprobs.tolist()
