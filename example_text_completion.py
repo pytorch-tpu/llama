@@ -89,8 +89,6 @@ def _fn(
     dynamo: bool = True,
 ):
     if USE_CUDA:
-        print(f"CUDA available? {torch.cuda.is_available()} idx {idx}")
-        print(f"USE_CUDA world size {torch.cuda.device_count()} idx {idx}")
         os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
         os.environ['RANK'] = str(idx)
         os.environ['LOCAL_RANK'] = str(idx)
