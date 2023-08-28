@@ -89,9 +89,9 @@ def _fn(
     dynamo: bool = True,
 ):
     if USE_CUDA:
-        os.environ['WORLD_SIZE'] = torch.cuda.device_count()
-        os.environ['RANK'] = idx
-        os.environ['LOCAL_RANK'] = idx
+        os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
+        os.environ['RANK'] = str(idx)
+        os.environ['LOCAL_RANK'] = str(idx)
     main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
 
 

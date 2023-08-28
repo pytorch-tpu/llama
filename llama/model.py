@@ -34,6 +34,7 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 2048
     quant: bool = False
+    gpu: bool = False
 
 
 class RMSNorm(torch.nn.Module):
@@ -129,6 +130,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
             quant=args.quant,
+            gpu=args.gpu,
         )
         self.wk = ColumnParallelLinear(
             args.dim,
@@ -140,6 +142,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
             quant=args.quant,
+            gpu=args.gpu,
         )
         self.wv = ColumnParallelLinear(
             args.dim,
@@ -151,6 +154,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
             quant=args.quant,
+            gpu=args.gpu,
         )
         self.wo = RowParallelLinear(
             args.n_heads * self.head_dim,
@@ -162,6 +166,7 @@ class Attention(nn.Module):
             rank=rank,
             groups=groups,
             quant=args.quant,
+            gpu=args.gpu,
         )
 
         cache_k = torch.zeros(
@@ -231,6 +236,7 @@ class FeedForward(nn.Module):
         rank: Optional[int] = None,
         groups: Optional[List] = None,
         quant: bool = False,
+        gpu: bool = False,
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
@@ -256,6 +262,7 @@ class FeedForward(nn.Module):
             rank=rank,
             groups=groups,
             quant=quant,
+            gpu=gpu,
         )
         self.w2 = RowParallelLinear(
             hidden_dim,
@@ -267,6 +274,7 @@ class FeedForward(nn.Module):
             rank=rank,
             groups=groups,
             quant=quant,
+            gpu=gpu,
         )
         self.w3 = ColumnParallelLinear(
             dim,
@@ -278,6 +286,7 @@ class FeedForward(nn.Module):
             rank=rank,
             groups=groups,
             quant=quant,
+            gpu=gpu,
         )
 
     def forward(self, x):
@@ -316,6 +325,7 @@ class TransformerBlock(nn.Module):
             rank=rank,
             groups=groups,
             quant=args.quant,
+            gpu=args.gpu,
         )
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
@@ -382,6 +392,7 @@ class Transformer(nn.Module):
             rank=rank,
             groups=groups,
             quant=params.quant,
+            gpu=params.gpu,
         )
 
         freqs_cis = precompute_freqs_cis(
