@@ -32,22 +32,62 @@
 
 
 ## Commands to Run on TPU v5e
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
+sudo apt-get update
+sudo apt-get -y install libomp5
+sudo pip3 install mkl mkl-include
+sudo pip3 install tf-nightly tb-nightly tbp-nightly
+sudo ln -s /usr/local/lib/libmkl_intel_lp64.so.2 /usr/local/lib/libmkl_intel_lp64.so.1
+sudo ln -s /usr/local/lib/libmkl_intel_thread.so.2 /usr/local/lib/libmkl_intel_thread.so.1
+sudo ln -s /usr/local/lib/libmkl_core.so.2 /usr/local/lib/libmkl_core.so.1
+sudo git clone --branch llama2-google-next-inference https://github.com/pytorch-tpu/llama.git
+sudo chmod -R 777 llama
+sudo pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
+pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
+pip3 install torchvision --user 
+pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch-nightly-cp310-cp310-linux_x86_64.whl --user 
+pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp310-cp310-linux_x86_64.whl --user
+pip3 install torch-xla[tpuvm]
+sudo apt-get install libopenblas-dev
+sudo git clone --branch blog https://github.com/pytorch-tpu/llama.git llama1"
 
+gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
+
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
+sudo chmod -R 777 llama
+cd llama/
+pip3 install -r requirements.txt
+pip3 install -e ."
+
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
+PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama1/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
+```
 
 ## Commands to Run on TPU v4
 
+```
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
+sudo pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
+pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
+pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch-nightly-cp38-cp38-linux_x86_64.whl
+pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp38-cp38-linux_x86_64.whl
+pip3 install torch-xla[tpuvm]
+sudo git clone --branch llama2-google-next-inference https://github.com/pytorch-tpu/llama.git
+sudo git clone --branch blog https://github.com/pytorch-tpu/llama.git llama1"
 
-## Docker
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
+sudo apt update
+sudo apt-get install libopenblas-dev"
 
-Here is another approach where you can use a pre-built docker that has everything and then just use the following scripts to run the docker on any TPUs.
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
+sudo chmod -R 777 llama
+cd llama/
+pip3 install -r requirements.txt
+pip3 install -e ."
 
+gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
 
-### Stack Versions
-
-
-
-1. [git@github.com](mailto:git@github.com):pytorch-tpu/llama.git @ b89dd0f2351c42fef367670d9d2c5b65cd0ae932
-2. PyTorch/XLA nightly @ 8.17.2023
-3. PyTorch nightly @ 8.17.2023
-4. Libtpu @ 0.1.dev20230809
-5. Python @ 3.8.17
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
+PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama1/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
+```
