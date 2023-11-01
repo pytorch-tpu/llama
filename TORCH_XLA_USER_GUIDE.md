@@ -30,7 +30,8 @@
   </tr>
 </table>
 
-
+* In this setup, we offer t5_tokenizer as an exmaple. Feel free to replace it
+  with other tokenizers as appropriate.
 
 ## Commands to Run on TPU v5e
 ```
