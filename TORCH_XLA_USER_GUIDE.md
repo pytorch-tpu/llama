@@ -33,7 +33,7 @@
 * In this setup, we offer t5_tokenizer as an exmaple. Feel free to replace it
   with other tokenizers as appropriate.
 
-## Commands to Run on TPU v5e
+## Commands to Run Llama2 using XLA:TPU (TPU v5e)
 ```
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
 sudo apt-get update
@@ -65,7 +65,7 @@ gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID
 PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
 ```
 
-## Commands to Run on TPU v4
+## Commands to Run Llama2 using XLA:TPU (TPU v4)
 
 ```
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
@@ -91,3 +91,6 @@ gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
 PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
 ```
+## Commands to Run Llama2 using XLA:GPU (e.g. L4 or H100)
+
+
