@@ -1,4 +1,4 @@
-## User Guide: Running Llama2 Inference on TPU v5e, v4 and on GPU
+## User Guide: Running Llama2 Inference on TPU (v5e, v4) and GPU
 
 ## Prerequisites
 
