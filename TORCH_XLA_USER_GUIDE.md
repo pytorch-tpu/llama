@@ -93,4 +93,11 @@ PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ 
 ```
 ## Commands to Run Llama2 using XLA:GPU (e.g. L4 or H100)
 
+`example_text_completion.py` can also be ran on GPUs with XLA:GPU. To do that, you need different wheels than the above such
+that you have XLA:GPU support. Please refer to [pytorch/xla](https://github.com/pytorch/xla#wheel) repo to download
+a suitable GPU nightly wheel for your environment.
 
+After that, you can run the following the command:
+```
+PJRT_DEVICE=GPU GPU_NUM_DEVICES=8 python3 example_text_completion.py 1 --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 1 --dynamo True --mp True
+```
