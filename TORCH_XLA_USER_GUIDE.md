@@ -4,8 +4,9 @@
 
 
 
-* Prepare the appropriate `params.json` for the target model using the following table
+* Prepare the appropriate `params.json` (e.g. `params70b.json`) for the target model using the following table
 * If you need to run quantization, add `"quant": true` to your json file
+* Use the instructions below to make your `params.json` available to the model
 
 <table>
   <tr>
@@ -50,7 +51,6 @@ pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/to
 pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp310-cp310-linux_x86_64.whl --user
 pip3 install torch-xla[tpuvm]
 sudo apt-get install libopenblas-dev
-sudo git clone --branch blog https://github.com/pytorch-tpu/llama.git llama1"
 
 gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
 
@@ -61,7 +61,7 @@ pip3 install -r requirements.txt
 pip3 install -e ."
 
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
-PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama1/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
+PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
 ```
 
 ## Commands to Run on TPU v4
@@ -74,7 +74,6 @@ pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/to
 pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp38-cp38-linux_x86_64.whl
 pip3 install torch-xla[tpuvm]
 sudo git clone --branch llama2-google-next-inference https://github.com/pytorch-tpu/llama.git
-sudo git clone --branch blog https://github.com/pytorch-tpu/llama.git llama1"
 
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
 sudo apt update
@@ -89,5 +88,5 @@ pip3 install -e ."
 gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
 
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
-PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama1/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
+PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
 ```
