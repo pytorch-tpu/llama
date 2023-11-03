@@ -101,3 +101,5 @@ After that, you can run the following the command:
 ```
 PJRT_DEVICE=GPU GPU_NUM_DEVICES=8 python3 example_text_completion.py 1 --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 1 --dynamo True --mp True
 ```
+
+For H100, we suggest to use docker image with ubuntu2024 in created H100 GPUVM: `gcr.io/tpu-pytorch/xla/ubuntu_2024_cuda_118:test`
