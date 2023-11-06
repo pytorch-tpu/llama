@@ -91,11 +91,11 @@ gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
 PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
 ```
-## Commands to Run Llama2 using XLA:GPU (e.g. L4 or H100)
+## Commands to Run Llama2 using XLA:GPU (e.g. L4 or H100) without Quantization
 
-`example_text_completion.py` can also be ran on GPUs with XLA:GPU. To do that, you need different wheels than the above such
+`example_text_completion.py` can also be ran on GPUs with XLA:GPU without quantization. To do that, you need different wheels than the above such
 that you have XLA:GPU support. Please refer to [pytorch/xla](https://github.com/pytorch/xla#wheel) repo to download
-a suitable GPU nightly wheel for your environment.
+a suitable GPU nightly at 2023/04/22 wheel for your environment.
 
 After that, you can run the following the command:
 ```
