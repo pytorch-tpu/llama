@@ -17,7 +17,7 @@ from llama.xla_model_parallel import (
 
 
 @torch.no_grad()
-def reshard(original_mp, target_mp, ckpt_dir, output_dir, tokenizer_path):
+def reshard(original_mp, target_mp, ckpt_dir, output_dir, tokenizer_path, quantize):
     assert target_mp > original_mp > 0
     factor = divide_and_check_no_remainder(target_mp, original_mp)
 
@@ -109,6 +109,8 @@ def reshard(original_mp, target_mp, ckpt_dir, output_dir, tokenizer_path):
                     factor)[shard_rank].contiguous()
                 assert weight_shard.size() == module.weight.size()
                 module.weight.copy_(weight_shard)
+                if quantize:
+                    module.quantize()
             elif isinstance(module, ColumnParallelLinear):
                 source_module = original_model.get_submodule(name)
                 assert module.bias is None and source_module.bias is None
@@ -122,14 +124,18 @@ def reshard(original_mp, target_mp, ckpt_dir, output_dir, tokenizer_path):
                         factor // kv_head_duplicate)[shard_rank // kv_head_duplicate].transpose(0, 1).contiguous()
                 assert weight_shard.size() == module.weight.size()
                 module.weight.copy_(weight_shard)
+                if quantize:
+                    module.quantize()
 
         state_dict = {
             k: v
             for k, v in target_model.state_dict().items()
-            if k in checkpoint.keys()
+            if k in checkpoint.keys() or "weight_scaler" in k # TODO: "weight_scaler" are new parameters after quant, add to state_dict in a more elegant way.
         }
         torch.save(state_dict, Path(output_dir) / f"{target_rank:03}.pth")
 
+    if quantize:
+        new_params['quant'] = True
     with open(Path(output_dir) / "params.json", "w") as f:
         json.dump(new_params, f)
 
