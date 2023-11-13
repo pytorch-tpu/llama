@@ -230,15 +230,15 @@ class Attention(nn.Module):
 
         # # Activation output sharding
         # # TODO(yeounoh) remove this after activation sharding support is enabled.
-        # import torch_xla.core.xla_model as xm
-        # import torch_xla.experimental.xla_sharding as xs
-        # import torch_xla.runtime as xr
-        # num_devices = xr.global_runtime_device_count()
-        # device_ids = torch.arange(num_devices)
-        # model = 8
-        # data = num_devices // model
-        # data_model_mesh = xs.HybridMesh(ici_mesh_shape=(data, 1, model))
-        # xs.mark_sharding(output, data_model_mesh, (0, 1, 2))
+        import torch_xla.core.xla_model as xm
+        import torch_xla.experimental.xla_sharding as xs
+        import torch_xla.runtime as xr
+        num_devices = xr.global_runtime_device_count()
+        device_ids = torch.arange(num_devices)
+        model = 8
+        data = num_devices // model
+        data_model_mesh = xs.HybridMesh(ici_mesh_shape=(data, 1, model))
+        xs.mark_sharding(output, data_model_mesh, (0, 1, 2), use_dynamo_custom_op=True)
 
         return output
 
