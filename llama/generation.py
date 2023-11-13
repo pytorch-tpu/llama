@@ -21,7 +21,7 @@ USE_CUDA = os.environ.get('USE_CUDA', False)
 # Some how xla init will slow down the CUDA speed.
 if not USE_CUDA:
     import torch_xla.core.xla_model as xm
-    import torch_xla.experimental.xla_sharding as xs
+    import torch_xla.distributed.spmd as xs
     from torch_xla import runtime as xr
     import numpy as np
 
