@@ -202,7 +202,7 @@ class Attention(nn.Module):
         # # Activation output sharding
         # # TODO(yeounoh) remove this after activation sharding support is enabled.
         import torch_xla.core.xla_model as xm
-        import torch_xla.distributed.spmd as xs
+        import torch_xla.experimental.xla_sharding as xs
         import torch_xla.runtime as xr
         num_devices = xr.global_runtime_device_count()
         device_ids = torch.arange(num_devices)
