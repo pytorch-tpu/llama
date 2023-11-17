@@ -25,6 +25,7 @@ def main(
     max_seq_len: int = 128,
     max_gen_len: int = 64,
     max_batch_size: int = 4,
+    max_prompt_len: int = 7,
     dynamo: bool = True,
 ):
     if not USE_CUDA:
@@ -37,23 +38,8 @@ def main(
         dynamo=dynamo,
     )
 
-    prompts = [
-        # For these prompts, the expected answer is the natural continuation of the prompt
-        "I believe the meaning of life is",
-#        "Simply put, the theory of relativity states that ",
-#        """A brief message congratulating the team on the launch:
-#
-#        Hi everyone,
-#
-#        I just """,
-#        # Few shot prompt (providing a few examples before asking model to complete more);
-#        """Translate English to French:
-#
-#        sea otter => loutre de mer
-#        peppermint => menthe poivrée
-#        plush girafe => girafe peluche
-#        cheese =>""",
-    ]
+    # -1 because of the bos token.
+    prompts = [" ".join(['I' for _ in range(max_prompt_len - 1)])]
     for i in range(2):
         # Automatically takes profiles, let's skip the cold run and only capture warm runs.
         if i > 0 and not USE_CUDA and xm.is_master_ordinal():
@@ -86,13 +72,14 @@ def _fn(
     max_seq_len: int = 128,
     max_gen_len: int = 64,
     max_batch_size: int = 4,
+    max_prompt_len: int = 7,
     dynamo: bool = True,
 ):
     if USE_CUDA:
         os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
         os.environ['RANK'] = str(idx)
         os.environ['LOCAL_RANK'] = str(idx)
-    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
+    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, max_prompt_len, dynamo)
 
 
 def mp_main(
@@ -104,6 +91,7 @@ def mp_main(
     max_seq_len: int = 128,
     max_gen_len: int = 64,
     max_batch_size: int = 4,
+    max_prompt_len: int = 7,
     dynamo: bool = True,
 ):
     if mp:
@@ -113,9 +101,9 @@ def mp_main(
         else:
             kwargs = {}
         xmp.spawn(_fn,
-                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo), **kwargs)
+                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, max_prompt_len, dynamo), **kwargs)
     else:
-        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
+        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, max_prompt_len, dynamo)
 
 
 if __name__ == "__main__":
