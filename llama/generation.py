@@ -158,7 +158,7 @@ class Llama:
                     else:
                         xs.mark_sharding(layer.weight, self.spmd_mesh, ('data', 'model'))
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, self.spmd_mesh, ('model', 'data'))
+                    xs.mark_sharding(layer.weight, self.spmd_mesh, ('data', 'model'))
 
         if dynamo:
             if USE_CUDA:
