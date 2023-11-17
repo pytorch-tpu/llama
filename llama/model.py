@@ -191,26 +191,12 @@ class Attention(nn.Module):
         keys = keys.transpose(1, 2)
         values = values.transpose(1, 2)
         scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        #scores = torch.einsum('ijkl,ijml->ijkm', xq, keys)
         scores = scores + mask  # (bs, n_local_heads, seqlen, max_seqlen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
         output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
-        #output = torch.einsum('ijkl,ijlm->ijkm', scores, values)
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         output = self.wo(output)
 
-        """
-        # Activation output sharding
-        import torch_xla.core.xla_model as xm
-        import torch_xla.experimental.xla_sharding as xs
-        import torch_xla.runtime as xr
-        num_devices = xr.global_runtime_device_count()
-        device_ids = torch.arange(num_devices)
-        model = 8
-        data = num_devices // model
-        data_model_mesh = xs.HybridMesh(ici_mesh_shape=(data, 1, model))
-        xs.mark_sharding(output, data_model_mesh, (0, 1, 2))
-        """
         return output
 
 

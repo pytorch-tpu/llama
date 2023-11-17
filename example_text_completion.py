@@ -48,11 +48,11 @@ def main(
 #        """A brief message congratulating the team on the launch:
 #
 #        Hi everyone,
-#        
+#
 #        I just """,
 #        # Few shot prompt (providing a few examples before asking model to complete more);
 #        """Translate English to French:
-#        
+#
 #        sea otter => loutre de mer
 #        peppermint => menthe poivrée
 #        plush girafe => girafe peluche

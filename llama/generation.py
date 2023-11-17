@@ -136,54 +136,29 @@ class Llama:
         self._generate_one_token_fn = self._generate_one_token
 
         if spmd:
-            num_devices = self.num_devices  # Should be 8 on v5-8
-            device_ids = np.arange(num_devices)
+            num_devices = xr.global_runtime_device_count()
+            self.spmd_mesh = xs.HybridMesh(ici_mesh_shape=(1, num_devices), axis_names=('data', 'model'))
 
             # manually shard the kv cache
-            four_d_mesh = xs.Mesh(device_ids, (1, 1, num_devices, 1))
             for layer in model.layers:
-                xs.mark_sharding(layer.attention.cache_k, four_d_mesh, (0, 1, 2, 3))
-                xs.mark_sharding(layer.attention.cache_v, four_d_mesh, (0, 1, 2, 3))
-
-            col_mesh = xs.Mesh(device_ids, (1, num_devices))
-            row_mesh = xs.Mesh(device_ids, (num_devices, 1))
+                xs.mark_sharding(layer.attention.cache_k, self.spmd_mesh, ('data', None, 'model', None))
+                xs.mark_sharding(layer.attention.cache_v, self.spmd_mesh, ('data', None, 'model', None))
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                    xs.mark_sharding(layer.weight, self.spmd_mesh, ('model', 'data'))
                 if 'attention.' in name:
                     if 'wo' in name:
-                        xs.mark_sharding(layer.weight, row_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, self.spmd_mesh, ('model', 'data'))
                     else:
-                        xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, self.spmd_mesh, ('data', 'model'))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, row_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, self.spmd_mesh, ('model', 'data'))
                     else:
-                        xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                        xs.mark_sharding(layer.weight, self.spmd_mesh, ('data', 'model'))
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, col_mesh, (0, 1))
-
-            # Sharding strategy for 2D sharding
-            # x_dim = 2 # hard-coded for v5-8
-            # yz_dim = 4 # hard-coded for v5-8
-            # two_d_mesh = xs.Mesh(device_ids, (x_dim, yz_dim))
-            # two_d_mesh_transpose = xs.Mesh(device_ids, (yz_dim, x_dim))
-            # for name, layer in model.named_modules():
-            #     if 'tok_embeddings' in name:
-            #         xs.mark_sharding(layer.weight, row_mesh, (0, 1))
-            #     if 'attention.' in name:
-            #         if 'wo' in name:
-            #             xs.mark_sharding(layer.weight, two_d_mesh_transpose, (0, 1))
-            #         else:
-            #             xs.mark_sharding(layer.weight, two_d_mesh, (0, 1))
-            #     if 'feed_forward.' in name:
-            #         if 'w2' in name:
-            #             xs.mark_sharding(layer.weight, two_d_mesh_transpose, (0, 1))
-            #         else:
-            #             xs.mark_sharding(layer.weight, two_d_mesh, (0, 1))
-            #     if 'output' in name:
-            #         xs.mark_sharding(layer.weight, col_mesh, (0, 1))
+                    xs.mark_sharding(layer.weight, self.spmd_mesh, ('model', 'data'))
 
         if dynamo:
             if USE_CUDA:
@@ -262,9 +237,7 @@ class Llama:
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long)
 
         # load data to devices
-        input_sharding = xs.ShardingSpec(xs.Mesh(np.arange(self.num_devices), (self.num_devices, 1)), (0, 1))
-        xtensors = torch_xla._XLAC._xla_tensors_from_aten([tokens], [str(self.device)], [input_sharding.xla_spec(tokens)])
-        tokens = xtensors[0]
+        tokens = tokens.to(self.device)
 
         if logprobs:
             token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
