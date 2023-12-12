@@ -17,7 +17,7 @@ from llama.xla_model_parallel import (
 
 
 @torch.no_grad()
-def reshard(original_mp, target_mp, ckpt_dir, output_dir, tokenizer_path, quantize):
+def reshard(original_mp, target_mp, ckpt_dir, output_dir, tokenizer_path, quantize=False):
     assert target_mp > original_mp > 0
     factor = divide_and_check_no_remainder(target_mp, original_mp)
 
