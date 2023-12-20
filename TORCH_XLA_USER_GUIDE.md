@@ -62,7 +62,7 @@ pip3 install -r requirements.txt
 pip3 install -e ."
 
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
-PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
+PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo openxla_eval"
 ```
 
 ## Commands to Run Llama2 using XLA:TPU (TPU v4)
@@ -89,7 +89,7 @@ pip3 install -e ."
 gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
 
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="cd $HOME/llama && 
-PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo True"
+PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ python3.8 example_text_completion.py --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 2 --mp True --dynamo openxla_eval"
 ```
 ## Commands to Run Llama2 using XLA:GPU (e.g. L4 or H100)
 
@@ -97,9 +97,13 @@ PJRT_DEVICE=TPU XLA_FLAGS=--xla_dump_to=/tmp/dir_name PROFILE_LOGDIR=/tmp/home/ 
 that you have XLA:GPU support. Please refer to [pytorch/xla](https://github.com/pytorch/xla#wheel) repo to download
 a suitable GPU nightly wheel for your environment.
 
-After that, you can run the following the command:
+After that, you can run with XLA:GPU using the following the command:
 ```
-PJRT_DEVICE=GPU GPU_NUM_DEVICES=8 python3 example_text_completion.py 1 --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 1 --dynamo True --mp True
+PJRT_DEVICE=CUDA GPU_NUM_DEVICES=8 python3 example_text_completion.py 1 --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 1 --dynamo openxla_eval --mp True
+```
+To run with Inductor:
+```
+CUDA_VISIBLE_DEVICES=0 USE_CUDA=1 python3 example_text_completion.py 1 --ckpt_dir . --tokenizer_path $HOME/llama/t5_tokenizer/spiece.model --max_seq_len 2048 --max_gen_len 1000 --max_batch_size 1 --dynamo inductor --mp True
 ```
 
 For H100, we suggest to use docker image with ubuntu2024 in created H100 GPUVM: `gcr.io/tpu-pytorch/xla/ubuntu_2024_cuda_118:test`

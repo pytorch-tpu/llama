@@ -59,7 +59,7 @@ class Llama:
         max_seq_len: int,
         max_batch_size: int,
         model_parallel_size: Optional[int] = None,
-        dynamo: bool = True,
+        dynamo: str = "openxla_eval",
     ) -> "Llama":
         # if not model_parallel_is_initialized():
         #     if model_parallel_size is None:
@@ -120,7 +120,7 @@ class Llama:
 
         return Llama(model, tokenizer, device, dynamo)
 
-    def __init__(self, model: Transformer, tokenizer: Tokenizer, device: torch.device, dynamo: bool = True):
+    def __init__(self, model: Transformer, tokenizer: Tokenizer, device: torch.device, dynamo: str = "openxla_eval"):
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
@@ -134,7 +134,7 @@ class Llama:
             else:
                 self._generate_one_token_fn = torch.compile(
                     self._generate_one_token_fn,
-                    backend="openxla_eval",
+                    backend=dynamo,
                     fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask,
