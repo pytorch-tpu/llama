@@ -26,6 +26,7 @@ def main(
     max_gen_len: int = 64,
     max_batch_size: int = 4,
     dynamo: bool = True,
+    repeat: int = 2,
 ):
     if not USE_CUDA:
         server = xp.start_server(9012)
@@ -54,7 +55,7 @@ def main(
 #        plush girafe => girafe peluche
 #        cheese =>""",
     ]
-    for i in range(2):
+    for i in range(repeat):
         # Automatically takes profiles, let's skip the cold run and only capture warm runs.
         if i > 0 and not USE_CUDA and xm.is_master_ordinal():
             import tempfile
@@ -87,12 +88,13 @@ def _fn(
     max_gen_len: int = 64,
     max_batch_size: int = 4,
     dynamo: bool = True,
+    repeat: int = 2,
 ):
     if USE_CUDA:
         os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
         os.environ['RANK'] = str(idx)
         os.environ['LOCAL_RANK'] = str(idx)
-    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
+    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat)
 
 
 def mp_main(
@@ -105,6 +107,7 @@ def mp_main(
     max_gen_len: int = 64,
     max_batch_size: int = 4,
     dynamo: bool = True,
+    repeat: int = 2,
 ):
     if mp:
         if USE_CUDA:
@@ -113,9 +116,9 @@ def mp_main(
         else:
             kwargs = {}
         xmp.spawn(_fn,
-                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo), **kwargs)
+                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat), **kwargs)
     else:
-        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo)
+        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat)
 
 
 if __name__ == "__main__":
