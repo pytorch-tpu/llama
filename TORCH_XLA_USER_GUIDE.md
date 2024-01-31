@@ -51,7 +51,7 @@ pip3 install torchvision --user
 pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch-nightly-cp310-cp310-linux_x86_64.whl --user 
 pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp310-cp310-linux_x86_64.whl --user
 pip3 install torch-xla[tpuvm]
-sudo apt-get install libopenblas-dev
+sudo apt-get install libopenblas-dev"
 
 gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
 
@@ -74,7 +74,7 @@ pip3 uninstall torch torch_xla libtpu-nightly torchvision -y
 pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch-nightly-cp38-cp38-linux_x86_64.whl
 pip3 install https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-nightly-cp38-cp38-linux_x86_64.whl
 pip3 install torch-xla[tpuvm]
-sudo git clone --branch llama2-google-next-inference https://github.com/pytorch-tpu/llama.git
+sudo git clone --branch llama2-google-next-inference https://github.com/pytorch-tpu/llama.git"
 
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
 sudo apt update
