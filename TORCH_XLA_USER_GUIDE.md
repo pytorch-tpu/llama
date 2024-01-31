@@ -55,6 +55,10 @@ sudo apt-get install libopenblas-dev"
 
 gcloud compute tpus tpu-vm scp params_70b.json ${TPU_NAME}:params.json --zone ${ZONE} --project ${PROJECT_ID} --worker=all
 
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="pip install torch_xla[tpu] -f https://storage.googleapis.com/libtpu-releases/index.html"
+
+gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="mv params.json llama/"
+
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE} --project ${PROJECT_ID} --worker=all --command="
 sudo chmod -R 777 llama
 cd llama/
