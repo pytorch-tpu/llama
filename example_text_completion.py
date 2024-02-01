@@ -57,7 +57,7 @@ def main(
     ]
     for i in range(repeat):
         # Automatically takes profiles, let's skip the cold run and only capture warm runs.
-        if i > 0 and not USE_CUDA and xm.is_master_ordinal():
+        if i == 1 and not USE_CUDA and xm.is_master_ordinal():
             import tempfile
             from threading import Thread
             profile_logdir = os.environ.get('PROFILE_LOGDIR', tempfile.mkdtemp())
