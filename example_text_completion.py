@@ -25,7 +25,7 @@ def main(
     max_seq_len: int = 128,
     max_gen_len: int = 64,
     max_batch_size: int = 4,
-    dynamo: bool = True,
+    dynamo: str = "openxla_eval",
     repeat: int = 2,
 ):
     if not USE_CUDA:
@@ -87,7 +87,7 @@ def _fn(
     max_seq_len: int = 128,
     max_gen_len: int = 64,
     max_batch_size: int = 4,
-    dynamo: bool = True,
+    dynamo: str = "openxla_eval",
     repeat: int = 2,
 ):
     if USE_CUDA:
@@ -106,9 +106,17 @@ def mp_main(
     max_seq_len: int = 128,
     max_gen_len: int = 64,
     max_batch_size: int = 4,
-    dynamo: bool = True,
+    dynamo: str = "openxla_eval",
     repeat: int = 2,
 ):
+    # Sanity-check the combination of USE_CUDA envvar and --dynamo flag.
+    if USE_CUDA:
+        # Eager mode on GPU or Inductor.
+        assert not dynamo or dynamo == "inductor"
+    else:
+        # Eager CPU / OpenXLA+Lazytensor (if PJRT_DEVICE is set), or OpenXLA.
+        assert not dynamo or dynamo == "openxla" or dynamo == "openxla_eval"
+
     if mp:
         if USE_CUDA:
             kwargs = {"nprocs": torch.cuda.device_count(),
