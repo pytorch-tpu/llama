@@ -26,12 +26,12 @@ import torch_xla.runtime as xr
 
 @dataclass
 class ModelArgs:
-    dim: int = 4096
-    n_layers: int = 32
-    n_heads: int = 32
+    dim: int = 512 #1024 2048 4096
+    n_layers: int = 2
+    n_heads: int = 2
     n_kv_heads: Optional[int] = None
     vocab_size: int = -1  # defined later by tokenizer
-    multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
+    multiple_of: int = 32 #64 128 256  # make SwiGLU hidden layer size multiple of large power of 2
     ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
 
@@ -205,10 +205,20 @@ class Attention(nn.Module):
 
         # # Activation output sharding
         # # TODO(yeounoh) remove this after activation sharding support is enabled.
-        num_devices = xr.global_runtime_device_count()
-        device_ids = torch.arange(num_devices)
-        data_model_mesh = xs.Mesh(device_ids, (4, 1, 2))
-        xs.mark_sharding(output, data_model_mesh, (0, 1, 2), use_dynamo_custom_op=True)
+        # num_devices = xr.global_runtime_device_count()
+        # device_ids = torch.arange(num_devices)
+        # data_model_mesh = xs.Mesh(device_ids, (4, 1, 2))
+        # xs.mark_sharding(output, data_model_mesh, (0, 1, 2), use_dynamo_custom_op=True)
+
+        # custom python dynamo mark sharding
+        import torch_xla.experimental.dynamo_mark_sharding
+        device_ids = [0]
+        mesh_shape = [1, 1, 1]
+        axis_names = 'None'
+        partition_spec = '(0, 1, 2)'
+        # print(type(output))
+        # print(output)
+        torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
 
         return output
 
