@@ -246,7 +246,8 @@ class Attention(nn.Module):
             device_ids = [i for i in range(self.num_devices)]
             # device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
             # device_ids = np.arange(self.num_devices)
-            mesh_shape = [4, 1, 2]
+            # mesh_shape = [4, 1, 2]
+            mesh_shape = [self.num_devices//2, 1, 2]
             axis_names = 'None'
             partition_spec = '(0, 1, 2)'
             torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
