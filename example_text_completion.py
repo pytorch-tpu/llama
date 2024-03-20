@@ -28,6 +28,7 @@ def main(
     dynamo: str = "openxla_eval",
     repeat: int = 2,
     spmd: bool = True,
+    enable_activation_sharding: bool = False,
 ):
     if not USE_CUDA:
         server = xp.start_server(9012)
@@ -38,6 +39,7 @@ def main(
         max_batch_size=max_batch_size,
         dynamo=dynamo,
         spmd=spmd,
+        enable_activation_sharding=enable_activation_sharding,
     )
 
     print(f'[WONJOO] max_batch_size={max_batch_size}')
@@ -96,12 +98,13 @@ def _fn(
     dynamo: str = "openxla_eval",
     repeat: int = 2,
     spmd: bool = True,
+    enable_activation_sharding: bool = False,
 ):
     if USE_CUDA:
         os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
         os.environ['RANK'] = str(idx)
         os.environ['LOCAL_RANK'] = str(idx)
-    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd)
+    main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd, enable_activation_sharding)
 
 
 def mp_main(
@@ -116,6 +119,7 @@ def mp_main(
     dynamo: str = "openxla_eval",
     repeat: int = 2,
     spmd: bool = True,
+    enable_activation_sharding: bool = False,
 ):
     # Sanity-check the combination of USE_CUDA envvar and --dynamo flag.
     if USE_CUDA:
@@ -132,9 +136,9 @@ def mp_main(
         else:
             kwargs = {}
         xmp.spawn(_fn,
-                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd), **kwargs)
+                  args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd, enable_activation_sharding), **kwargs)
     else:
-        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd)
+        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, repeat, spmd, enable_activation_sharding)
 
 
 if __name__ == "__main__":

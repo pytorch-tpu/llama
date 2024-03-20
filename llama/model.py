@@ -40,6 +40,7 @@ class ModelArgs:
     quant: bool = False
     gpu: bool = False
 
+    num_devices: int = 8
     enable_activation_sharding: bool = False
 
     def print_values(self):
@@ -50,6 +51,7 @@ class ModelArgs:
         print(f'  max_batch_size={self.max_batch_size}')
         print(f'  max_seq_len={self.max_seq_len}')
         print(f'  quant={self.quant}')
+        print(f'  num_devices={self.num_devices}')
         print(f'  enable_activation_sharding={self.enable_activation_sharding}')
 
 
@@ -129,6 +131,7 @@ class Attention(nn.Module):
         self.n_rep = self.n_local_heads // self.n_local_kv_heads  # this should be 1 if args.n_kv_heads is None
         self.head_dim = args.dim // args.n_heads
         self.enable_activation_sharding = args.enable_activation_sharding
+        self.num_devices = args.num_devices
 
         self.wq = nn.Linear(
             args.dim,
@@ -240,8 +243,9 @@ class Attention(nn.Module):
         import torch_xla.experimental.dynamo_mark_sharding
         if self.enable_activation_sharding:
             # num_devices = 8  # xr.global_runtime_device_count()
-            # device_ids = [i for i in range(num_devices)]
-            device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+            device_ids = [i for i in range(self.num_devices)]
+            # device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+            # device_ids = np.arange(self.num_devices)
             mesh_shape = [4, 1, 2]
             axis_names = 'None'
             partition_spec = '(0, 1, 2)'

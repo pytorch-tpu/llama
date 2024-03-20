@@ -65,6 +65,7 @@ class Llama:
         model_parallel_size: Optional[int] = None,
         dynamo: str = "openxla_eval",
         spmd: bool = True,
+        enable_activation_sharding: bool = False,
     ) -> "Llama":
 
         # seed must be the same in all processes
@@ -102,9 +103,12 @@ class Llama:
         with open(Path(ckpt_dir) / "params.json", "r") as f:
             params = json.loads(f.read())
 
+        num_devices = xr.global_runtime_device_count()
         model_args: ModelArgs = ModelArgs(
             max_seq_len=max_seq_len,
             max_batch_size=max_batch_size,
+            num_devices=num_devices,
+            enable_activation_sharding=enable_activation_sharding,
             **params,
         )
 
