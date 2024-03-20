@@ -39,6 +39,8 @@ class ModelArgs:
     max_seq_len: int = 2048
     quant: bool = False
 
+    enable_activation_sharding: bool = False
+
     def print_values(self):
         print(f'[WONJOO] ModelArgs')
         print(f'[WONJOO] dim={self.dim}')
@@ -47,6 +49,7 @@ class ModelArgs:
         print(f'[WONJOO] max_batch_size={self.max_batch_size}')
         print(f'[WONJOO] max_seq_len={self.max_seq_len}')
         print(f'[WONJOO] quant={self.quant}')
+        print(f'[WONJOO] enable_activation_sharding={self.enable_activation_sharding}')
 
 
 class RMSNorm(torch.nn.Module):
@@ -124,6 +127,7 @@ class Attention(nn.Module):
         self.n_local_kv_heads = self.n_kv_heads
         self.n_rep = self.n_local_heads // self.n_local_kv_heads  # this should be 1 if args.n_kv_heads is None
         self.head_dim = args.dim // args.n_heads
+        self.enable_activation_sharding = args.enable_activation_sharding
 
         self.wq = nn.Linear(
             args.dim,
@@ -203,12 +207,16 @@ class Attention(nn.Module):
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         output = self.wo(output)
 
-        # # Activation output sharding
-        # # TODO(yeounoh) remove this after activation sharding support is enabled.
-        num_devices = xr.global_runtime_device_count()
-        device_ids = torch.arange(num_devices)
-        data_model_mesh = xs.Mesh(device_ids, (4, 1, 2))
-        xs.mark_sharding(output, data_model_mesh, (0, 1, 2), use_dynamo_custom_op=True)
+        # Activation output sharding
+        import torch_xla.experimental.dynamo_mark_sharding
+        if self.enable_activation_sharding:
+            # num_devices = 8  # xr.global_runtime_device_count()
+            # device_ids = [i for i in range(num_devices)]
+            device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+            mesh_shape = [4, 1, 2]
+            axis_names = 'None'
+            partition_spec = '(0, 1, 2)'
+            torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
 
         return output
 
