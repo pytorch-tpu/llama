@@ -43,14 +43,14 @@ class ModelArgs:
     enable_activation_sharding: bool = False
 
     def print_values(self):
-        print(f'[WONJOO] ModelArgs')
-        print(f'[WONJOO] dim={self.dim}')
-        print(f'[WONJOO] n_layers={self.n_layers}')
-        print(f'[WONJOO] n_heads={self.n_heads}')
-        print(f'[WONJOO] max_batch_size={self.max_batch_size}')
-        print(f'[WONJOO] max_seq_len={self.max_seq_len}')
-        print(f'[WONJOO] quant={self.quant}')
-        print(f'[WONJOO] enable_activation_sharding={self.enable_activation_sharding}')
+        print(f'ModelArgs')
+        print(f'  dim={self.dim}')
+        print(f'  n_layers={self.n_layers}')
+        print(f'  n_heads={self.n_heads}')
+        print(f'  max_batch_size={self.max_batch_size}')
+        print(f'  max_seq_len={self.max_seq_len}')
+        print(f'  quant={self.quant}')
+        print(f'  enable_activation_sharding={self.enable_activation_sharding}')
 
 
 class RMSNorm(torch.nn.Module):
