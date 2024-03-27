@@ -172,7 +172,7 @@ class Llama:
             else:
                 self._generate_one_token_fn = torch.compile(
                     self._generate_one_token_fn,
-                    backend="torchxla_trace_once",
+                    backend="openxla",
                     fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask,
