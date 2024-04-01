@@ -213,14 +213,10 @@ class Attention(nn.Module):
         # Activation output sharding
         import torch_xla.experimental.dynamo_mark_sharding
         if self.enable_activation_sharding:
-            # num_devices = 8  # xr.global_runtime_device_count()
             device_ids = [i for i in range(self.num_devices)]
-            # device_ids = [0, 1, 2, 3, 4, 5, 6, 7]
-            # device_ids = np.arange(self.num_devices)
-            # mesh_shape = [4, 1, 2]
-            mesh_shape = [self.num_devices//2, 1, 2]
+            mesh_shape = [self.num_devices, 1, 1]
             axis_names = 'None'
-            partition_spec = '(0, 1, 2)'
+            partition_spec = '(2, 1, 0)'
             torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
 
         return output
