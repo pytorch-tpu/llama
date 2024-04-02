@@ -41,6 +41,7 @@ class ModelArgs:
 
     num_devices: int = 8
     enable_activation_sharding: bool = False
+    enable_kv_cache_sharding: bool = False
 
     def print_values(self):
         print(f'ModelArgs')
@@ -52,6 +53,7 @@ class ModelArgs:
         print(f'  quant={self.quant}')
         print(f'  num_devices={self.num_devices}')
         print(f'  enable_activation_sharding={self.enable_activation_sharding}')
+        print(f'  enable_kv_cache_sharding={self.enable_kv_cache_sharding}')
 
 
 class RMSNorm(torch.nn.Module):
