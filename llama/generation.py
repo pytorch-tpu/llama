@@ -138,8 +138,8 @@ class Llama:
         if spmd:
             num_devices = self.num_devices  # Should be 8 on v5-8
             device_ids = np.arange(num_devices)
-
-            mesh = xs.Mesh(device_ids, (num_devices,))
+            assert num_devices == 16
+            mesh = xs.Mesh(device_ids, (2, 8))
 
             # manually shard the kv cache
             # for layer in model.layers:
@@ -151,16 +151,16 @@ class Llama:
                     xs.mark_sharding(layer.weight, mesh, (0, None))
                 if 'attention.' in name:
                     if 'wo' in name:
-                        xs.mark_sharding(layer.weight, mesh, (0, None))
+                        xs.mark_sharding(layer.weight, mesh, (0, 1))
                     else:
-                        xs.mark_sharding(layer.weight, mesh, (None, 0))
+                        xs.mark_sharding(layer.weight, mesh, (1, 0))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, mesh, (0, None))
+                        xs.mark_sharding(layer.weight, mesh, (0, 1))
                     else:
-                        xs.mark_sharding(layer.weight, mesh, (None, 0))
+                        xs.mark_sharding(layer.weight, mesh, (1, 0))
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, mesh, (None, 0))
+                    xs.mark_sharding(layer.weight, mesh, (None, (0,1)))
 
         if dynamo:
             if USE_CUDA:
