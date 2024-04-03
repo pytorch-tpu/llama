@@ -66,7 +66,6 @@ class Llama:
         dynamo: bool = True,
         spmd: bool = True,
         enable_activation_sharding: bool = False,
-        enable_kv_cache_sharding: bool = False,
     ) -> "Llama":
 
         # seed must be the same in all processes
@@ -110,7 +109,6 @@ class Llama:
             max_batch_size=max_batch_size,
             num_devices=num_devices,
             enable_activation_sharding=enable_activation_sharding,
-            enable_kv_cache_sharding=enable_kv_cache_sharding,
             **params,
         )
 
@@ -144,10 +142,9 @@ class Llama:
             mesh = xs.Mesh(device_ids, (num_devices,))
 
             # manually shard the kv cache
-            if model.params.enable_kv_cache_sharding:
-              for layer in model.layers:
-                  xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
-                  xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
+            for layer in model.layers:
+                xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
+                xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
@@ -242,6 +239,11 @@ class Llama:
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long)
         tokens = tokens.to(self.device
                            )
+        # # shard the batch dim & load data to devices
+        # # TODO(yeounoh) remove this once the Dynamo+SPMD infra is fixed.
+        # input_sharding = xs.ShardingSpec(xs.Mesh(np.arange(self.num_devices), (self.num_devices, 1)), (0, 1))
+        # xtensors = torch_xla._XLAC._xla_tensors_from_aten([tokens], [str(self.device)], [input_sharding.xla_spec(tokens)])
+        # tokens = xtensors[0]
 
         if logprobs:
             token_logprobs = torch.zeros_like(tokens, dtype=torch.float)

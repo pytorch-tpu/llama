@@ -27,7 +27,6 @@ def main(
     dynamo: bool = True,
     spmd: bool = True,
     enable_activation_sharding: bool = False,
-    enable_kv_cache_sharding: bool = False,
 ):
     if not USE_CUDA:
         # server = xp.start_server(9012, only_on_master=False)
@@ -40,10 +39,9 @@ def main(
         dynamo=dynamo,
         spmd=spmd,
         enable_activation_sharding=enable_activation_sharding,
-        enable_kv_cache_sharding=enable_kv_cache_sharding,
     )
 
-    print(f' max_batch_size={max_batch_size}')
+    print(f'[WONJOO] max_batch_size={max_batch_size}')
 
     prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
@@ -52,11 +50,11 @@ def main(
 #        """A brief message congratulating the team on the launch:
 #
 #        Hi everyone,
-#
+#        
 #        I just """,
 #        # Few shot prompt (providing a few examples before asking model to complete more);
 #        """Translate English to French:
-#
+#        
 #        sea otter => loutre de mer
 #        peppermint => menthe poivrée
 #        plush girafe => girafe peluche
@@ -117,9 +115,7 @@ def mp_main(
     dynamo: bool = True,
     spmd: bool = True,
     enable_activation_sharding: bool = False,
-    enable_kv_cache_sharding: bool = False,
 ):
-    print('****', enable_kv_cache_sharding)
     if mp:
         if USE_CUDA:
             kwargs = {"nprocs": torch.cuda.device_count(),
@@ -129,7 +125,7 @@ def mp_main(
         xmp.spawn(_fn,
                   args=(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, spmd, enable_activation_sharding), **kwargs)
     else:
-        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, spmd, enable_activation_sharding, enable_kv_cache_sharding)
+        main(ckpt_dir, tokenizer_path, temperature, top_p, max_seq_len, max_gen_len, max_batch_size, dynamo, spmd, enable_activation_sharding)
 
 
 if __name__ == "__main__":
