@@ -22,6 +22,7 @@ from torch import nn
 import torch_xla.core.xla_model as xm
 import torch_xla.experimental.xla_sharding as xs
 import torch_xla.runtime as xr
+import torch_xla.experimental.dynamo_mark_sharding
 
 
 @dataclass
@@ -186,6 +187,16 @@ class Attention(nn.Module):
         xk = xk.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
         xv = xv.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
 
+        # Activation output sharding
+        if self.enable_activation_sharding:
+            device_ids = [i for i in range(self.num_devices)]
+            mesh_shape = [self.num_devices, 1]
+            axis_names = 'None'
+            partition_spec = '(None, None, 0, None)'
+            torch.ops.xla.dynamo_mark_sharding(xq, device_ids, mesh_shape, axis_names, partition_spec)
+            torch.ops.xla.dynamo_mark_sharding(xk, device_ids, mesh_shape, axis_names, partition_spec)
+            torch.ops.xla.dynamo_mark_sharding(xv, device_ids, mesh_shape, axis_names, partition_spec)
+
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
         self.cache_k = self.cache_k.index_copy(1, input_indexes, xk)
@@ -201,23 +212,29 @@ class Attention(nn.Module):
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2)
         values = values.transpose(1, 2)
-        scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        #scores = torch.einsum('ijkl,ijml->ijkm', xq, keys)
+        #scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+        scores = torch.einsum('ijkl,ijml->ijkm', xq, keys)
+
         scores = scores + mask  # (bs, n_local_heads, seqlen, max_seqlen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-        output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
-        #output = torch.einsum('ijkl,ijlm->ijkm', scores, values)
-        output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
-        output = self.wo(output)
-
-        # Activation output sharding
-        import torch_xla.experimental.dynamo_mark_sharding
         if self.enable_activation_sharding:
             device_ids = [i for i in range(self.num_devices)]
-            mesh_shape = [self.num_devices, 1, 1]
+            mesh_shape = [self.num_devices, 1]
             axis_names = 'None'
-            partition_spec = '(2, 1, 0)'
+            partition_spec = '(None, 0, None, None)'
+            torch.ops.xla.dynamo_mark_sharding(scores, device_ids, mesh_shape, axis_names, partition_spec)
+
+        #output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
+        output = torch.einsum('ijkl,ijlm->ijkm', scores, values)
+        if self.enable_activation_sharding:
+            device_ids = [i for i in range(self.num_devices)]
+            mesh_shape = [self.num_devices, 1]
+            axis_names = 'None'
+            partition_spec = '(None, 0, None, None)'
             torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
+
+        output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
+        output = self.wo(output)
 
         return output
 
@@ -225,6 +242,7 @@ class Attention(nn.Module):
 class FeedForward(nn.Module):
     def __init__(
         self,
+        args: ModelArgs,
         dim: int,
         hidden_dim: int,
         multiple_of: int,
@@ -248,6 +266,8 @@ class FeedForward(nn.Module):
 
         init_method = lambda x: x
 
+        self.num_devices = args.num_devices
+
         self.w1 = nn.Linear(
             dim, hidden_dim, bias=False
         )
@@ -259,7 +279,14 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x):
-        return self.w2(F.silu(self.w1(x)) * self.w3(x))
+        output = self.w2(F.silu(self.w1(x)) * self.w3(x))
+        device_ids = [i for i in range(self.num_devices)]
+        mesh_shape = [self.num_devices, 1, 1]
+        axis_names = 'None'
+        partition_spec = '(2, 1, 0)'
+        torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
+
+        return output
 
 
 class TransformerBlock(nn.Module):
@@ -286,6 +313,7 @@ class TransformerBlock(nn.Module):
             groups=groups,
         )
         self.feed_forward = FeedForward(
+            args,
             dim=args.dim,
             hidden_dim=4 * args.dim,
             multiple_of=args.multiple_of,

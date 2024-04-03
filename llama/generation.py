@@ -142,9 +142,9 @@ class Llama:
             mesh = xs.Mesh(device_ids, (2, 8))
 
             # manually shard the kv cache
-            # for layer in model.layers:
-            #    xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
-            #    xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
+            for layer in model.layers:
+                xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
+                xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
@@ -156,9 +156,9 @@ class Llama:
                         xs.mark_sharding(layer.weight, mesh, (1, 0))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, mesh, (0, 1))
-                    else:
                         xs.mark_sharding(layer.weight, mesh, (1, 0))
+                    elif 'w1' in name:
+                        xs.mark_sharding(layer.weight, mesh, (0, 1))
                 if 'output' in name:
                     xs.mark_sharding(layer.weight, mesh, (None, (0,1)))
 
@@ -225,7 +225,7 @@ class Llama:
         echo: bool = False,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         params = self.model.params
-        bsz = len(prompt_tokens)
+        iu89 = len(prompt_tokens)
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
         min_prompt_len = min(len(t) for t in prompt_tokens)
@@ -239,11 +239,6 @@ class Llama:
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long)
         tokens = tokens.to(self.device
                            )
-        # # shard the batch dim & load data to devices
-        # # TODO(yeounoh) remove this once the Dynamo+SPMD infra is fixed.
-        # input_sharding = xs.ShardingSpec(xs.Mesh(np.arange(self.num_devices), (self.num_devices, 1)), (0, 1))
-        # xtensors = torch_xla._XLAC._xla_tensors_from_aten([tokens], [str(self.device)], [input_sharding.xla_spec(tokens)])
-        # tokens = xtensors[0]
 
         if logprobs:
             token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
@@ -258,9 +253,6 @@ class Llama:
         temperature_tensor = torch.tensor(float(temperature)).to(self.device)
         top_p_tensor = torch.tensor(float(top_p)).to(self.device)
         with_temp = temperature > 0
-
-        # if self.device.type == "xla":
-        #     xm.mark_step()
 
         decoding_start_time = time.time()
         prev_pos = 0
