@@ -142,9 +142,9 @@ class Llama:
             mesh = xs.Mesh(device_ids, (num_devices,))
 
             # manually shard the kv cache
-            for layer in model.layers:
-                xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
-                xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
+            # for layer in model.layers:
+            #    xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
+            #    xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
