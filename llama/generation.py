@@ -66,6 +66,7 @@ class Llama:
         dynamo: bool = True,
         spmd: bool = True,
         enable_activation_sharding: bool = False,
+        enable_kv_cache_sharding: bool = True,
     ) -> "Llama":
 
         # seed must be the same in all processes
@@ -126,9 +127,9 @@ class Llama:
         model = model.to(device)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
 
-        return Llama(model, tokenizer, device, dynamo, spmd)
+        return Llama(model, tokenizer, device, dynamo, spmd, enable_kv_cache_sharding)
 
-    def __init__(self, model: Transformer, tokenizer: Tokenizer, device: torch.device, dynamo: bool = True, spmd: bool = True):
+    def __init__(self, model: Transformer, tokenizer: Tokenizer, device: torch.device, dynamo: bool = True, spmd: bool = True, enable_kv_cache_sharding: bool = True):
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
@@ -142,9 +143,10 @@ class Llama:
             mesh = xs.Mesh(device_ids, (num_devices,))
 
             # manually shard the kv cache
-            for layer in model.layers:
-                xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
-                xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
+            if enable_kv_cache_sharding:
+                for layer in model.layers:
+                    xs.mark_sharding(layer.attention.cache_k, mesh, (None, None, 0, None))
+                    xs.mark_sharding(layer.attention.cache_v, mesh, (None, None, 0, None))
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
@@ -170,7 +172,7 @@ class Llama:
             else:
                 self._generate_one_token_fn = torch.compile(
                     self._generate_one_token_fn,
-                    backend="torchxla_trace_once",
+                    backend="openxla_eval",
                     fullgraph=True)
 
     def _generate_one_token(self, tokens, input_tokens, input_text_mask,
