@@ -140,7 +140,9 @@ class Llama:
             num_devices = self.num_devices  # Should be 8 on v5-8
             device_ids = np.arange(num_devices)
 
-            mesh = xs.Mesh(device_ids, (num_devices,))
+            mesh = xs.Mesh(device_ids, (num_devices, 1), axis_names=('data', 'model'))
+            row_partition = ('data', 'model')
+            col_partition = ('model', 'data')
 
             # manually shard the kv cache
             if enable_kv_cache_sharding:
@@ -150,19 +152,19 @@ class Llama:
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, mesh, (0, None))
+                    xs.mark_sharding(layer.weight, mesh, row_partition)
                 if 'attention.' in name:
                     if 'wo' in name:
-                        xs.mark_sharding(layer.weight, mesh, (0, None))
+                        xs.mark_sharding(layer.weight, mesh, row_partition)
                     else:
-                        xs.mark_sharding(layer.weight, mesh, (None, 0))
+                        xs.mark_sharding(layer.weight, mesh, col_partition)
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, mesh, (0, None))
+                        xs.mark_sharding(layer.weight, mesh, row_partition)
                     else:
-                        xs.mark_sharding(layer.weight, mesh, (None, 0))
+                        xs.mark_sharding(layer.weight, mesh, col_partition)
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, mesh, (None, 0))
+                    xs.mark_sharding(layer.weight, mesh, col_partition)
 
         if dynamo:
             if USE_CUDA:
