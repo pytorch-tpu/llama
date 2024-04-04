@@ -139,7 +139,7 @@ class Llama:
             num_devices = self.num_devices  # Should be 8 on v5-8
             device_ids = np.arange(num_devices)
             assert num_devices == 16
-            mesh = xs.Mesh(device_ids, (2, 8))
+            mesh = xs.Mesh(device_ids, (8, 2))
 
             # manually shard the kv cache
             for layer in model.layers:
@@ -148,7 +148,7 @@ class Llama:
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, mesh, (0, None))
+                    xs.mark_sharding(layer.weight, mesh, ((0,1), None))
                 if 'attention.' in name:
                     if 'wo' in name:
                         xs.mark_sharding(layer.weight, mesh, (0, 1))
@@ -156,9 +156,9 @@ class Llama:
                         xs.mark_sharding(layer.weight, mesh, (1, 0))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, mesh, (1, 0))
-                    elif 'w1' in name:
                         xs.mark_sharding(layer.weight, mesh, (0, 1))
+                    else:
+                        xs.mark_sharding(layer.weight, mesh, (1, 0))
                 if 'output' in name:
                     xs.mark_sharding(layer.weight, mesh, (None, (0,1)))
 
@@ -225,7 +225,7 @@ class Llama:
         echo: bool = False,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         params = self.model.params
-        iu89 = len(prompt_tokens)
+        bsz = len(prompt_tokens)
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
         min_prompt_len = min(len(t) for t in prompt_tokens)

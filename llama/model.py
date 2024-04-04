@@ -133,6 +133,22 @@ class Attention(nn.Module):
         self.enable_activation_sharding = args.enable_activation_sharding
         self.num_devices = args.num_devices
 
+        device_ids = [i for i in range(self.num_devices)]
+        mesh_shape = [self.num_devices, 1]
+        axis_names = 'None'
+        partition_spec_d1 = '(None, 0, None, None)'
+        def shard_fn_d1(output):
+            torch.ops.xla.dynamo_mark_sharding(output, device_ids,
+                                               mesh_shape, axis_names,
+                                               partition_spec_d1)
+        self.shard_fn_d1 = shard_fn_d1
+        partition_spec_d2 = '(None, None, 0, None)'
+        def shard_fn_d2(output):
+            torch.ops.xla.dynamo_mark_sharding(output, device_ids,
+                                               mesh_shape, axis_names,
+                                               partition_spec_d2)
+        self.shard_fn_d2 = shard_fn_d2
+
         self.wq = nn.Linear(
             args.dim,
             args.n_heads * self.head_dim,
@@ -189,13 +205,9 @@ class Attention(nn.Module):
 
         # Activation output sharding
         if self.enable_activation_sharding:
-            device_ids = [i for i in range(self.num_devices)]
-            mesh_shape = [self.num_devices, 1]
-            axis_names = 'None'
-            partition_spec = '(None, None, 0, None)'
-            torch.ops.xla.dynamo_mark_sharding(xq, device_ids, mesh_shape, axis_names, partition_spec)
-            torch.ops.xla.dynamo_mark_sharding(xk, device_ids, mesh_shape, axis_names, partition_spec)
-            torch.ops.xla.dynamo_mark_sharding(xv, device_ids, mesh_shape, axis_names, partition_spec)
+            self.shard_fn_d2(xq)
+            self.shard_fn_d2(xk)
+            self.shard_fn_d2(xv)
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
@@ -213,25 +225,14 @@ class Attention(nn.Module):
         keys = keys.transpose(1, 2)
         values = values.transpose(1, 2)
         #scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        scores = torch.einsum('ijkl,ijml->ijkm', xq, keys)
+        scores = torch.einsum('ijkl,ijml->ijkm', xq, keys) / math.sqrt(self.head_dim)
 
         scores = scores + mask  # (bs, n_local_heads, seqlen, max_seqlen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-        if self.enable_activation_sharding:
-            device_ids = [i for i in range(self.num_devices)]
-            mesh_shape = [self.num_devices, 1]
-            axis_names = 'None'
-            partition_spec = '(None, 0, None, None)'
-            torch.ops.xla.dynamo_mark_sharding(scores, device_ids, mesh_shape, axis_names, partition_spec)
-
         #output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
         output = torch.einsum('ijkl,ijlm->ijkm', scores, values)
         if self.enable_activation_sharding:
-            device_ids = [i for i in range(self.num_devices)]
-            mesh_shape = [self.num_devices, 1]
-            axis_names = 'None'
-            partition_spec = '(None, 0, None, None)'
-            torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
+            self.shard_fn_d1(output)
 
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         output = self.wo(output)
@@ -268,6 +269,16 @@ class FeedForward(nn.Module):
 
         self.num_devices = args.num_devices
 
+        self.enable_activation_sharding = args.enable_activation_sharding
+        device_ids = [i for i in range(self.num_devices)]
+        mesh_shape = [self.num_devices, 1, 1]
+        axis_names = 'None'
+        partition_spec = '(2, 1, 0)'
+        def shard_fn(output):
+            torch.ops.xla.dynamo_mark_sharding(output, device_ids,
+                                               mesh_shape, axis_names, partition_spec)
+        self.shard_fn = shard_fn
+
         self.w1 = nn.Linear(
             dim, hidden_dim, bias=False
         )
@@ -279,13 +290,16 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x):
-        output = self.w2(F.silu(self.w1(x)) * self.w3(x))
-        device_ids = [i for i in range(self.num_devices)]
-        mesh_shape = [self.num_devices, 1, 1]
-        axis_names = 'None'
-        partition_spec = '(2, 1, 0)'
-        torch.ops.xla.dynamo_mark_sharding(output, device_ids, mesh_shape, axis_names, partition_spec)
-
+        # activation sharding
+        if self.enable_activation_sharding:
+            o1 = self.w1(x)
+            self.shard_fn(o1)
+            o2 = F.silu(o1) * self.w3(x)
+            self.shard_fn(o2)
+            output = self.w2(o2)
+            self.shard_fn(output)
+        else:
+            output = self.w2(F.silu(self.w1(x)) * self.w3(x))
         return output
 
 
