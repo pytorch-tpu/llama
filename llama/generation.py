@@ -152,19 +152,19 @@ class Llama:
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, mesh, row_partition)
+                    xs.mark_sharding(layer.weight, mesh, ('model', 'data'))
                 if 'attention.' in name:
                     if 'wo' in name:
-                        xs.mark_sharding(layer.weight, mesh, row_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('model', 'data'))
                     else:
-                        xs.mark_sharding(layer.weight, mesh, col_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('data', 'model'))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, mesh, row_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('model', 'data'))
                     else:
-                        xs.mark_sharding(layer.weight, mesh, col_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('data', 'model'))
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, mesh, col_partition)
+                    xs.mark_sharding(layer.weight, mesh, ('data', 'model'))
 
         if dynamo:
             if USE_CUDA:

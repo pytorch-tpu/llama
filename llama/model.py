@@ -63,7 +63,8 @@ class RMSNorm(torch.nn.Module):
 
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
+        
+    # @xp.trace_me("RMSNorm.forward")
     def forward(self, x):
         output = self._norm(x.float()).type_as(x)
         return output * self.weight
@@ -201,6 +202,7 @@ class Attention(nn.Module):
         )
         self.register_buffer("cache_v", cache_v)
 
+    # @xp.trace_me("Attention.forward")
     def forward(
         self,
         x: torch.Tensor,
@@ -315,6 +317,7 @@ class FeedForward(nn.Module):
             gpu=gpu,
         )
 
+    # @xp.trace_me("FeedForward.forward")
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
@@ -357,6 +360,7 @@ class TransformerBlock(nn.Module):
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
+    # @xp.trace_me("TransformerBlock.forward")
     def forward(
         self,
         x: torch.Tensor,
@@ -429,6 +433,7 @@ class Transformer(nn.Module):
         self.register_buffer("mask", mask)
 
     @torch.no_grad()
+    # @xp.trace_me("Transformer.forward")
     def forward(self, tokens: torch.Tensor, input_indexes: torch.Tensor, output_index: Optional[torch.Tensor]):
         _bsz, seqlen = tokens.shape
         assert _bsz == self.params.max_batch_size
