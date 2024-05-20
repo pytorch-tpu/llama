@@ -192,7 +192,7 @@ class Attention(nn.Module):
 
         self.cache_k.index_copy_(1, input_indexes, xk)
         self.cache_v.index_copy_(1, input_indexes, xv)
-        
+
         keys = self.cache_k[:, :]
         values = self.cache_v[:, :]
 
