@@ -104,8 +104,7 @@ class Attention(nn.Module):
                  args: ModelArgs,
                  world_size: Optional[int] = None,
                  rank: Optional[int] = None,
-                 groups: Optional[List] = None,
-                 layer_id: int = None):
+                 groups: Optional[List] = None):
         super().__init__()
         if world_size is None:
             groups = get_model_parallel_group()
@@ -120,7 +119,6 @@ class Attention(nn.Module):
         self.head_dim = args.dim // args.n_heads
 
         init_method = lambda x: x
-        self.layer_id = layer_id
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -197,8 +195,6 @@ class Attention(nn.Module):
         mask: Optional[torch.Tensor],
         input_indexes: torch.Tensor,
     ):
-        if self.layer_id == 0:
-            print(1, id(self.cache_k))
         bsz, seqlen, _ = x.shape
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
@@ -208,14 +204,10 @@ class Attention(nn.Module):
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-        self.cache_k = self.cache_k.index_copy(1, input_indexes, xk)
-        self.cache_v = self.cache_v.index_copy(1, input_indexes, xv)
-        if self.layer_id == 0:
-            print(2, id(self.cache_k))
+        self.cache_k = self.cache_k.index_copy_(1, input_indexes, xk)
+        self.cache_v = self.cache_v.index_copy_(1, input_indexes, xv)
         keys = self.cache_k[:, :]
         values = self.cache_v[:, :]
-        if self.layer_id == 0:
-            print(3, id(self.cache_k))
 
         # repeat k/v heads if n_kv_heads < n_heads
         keys = repeat_kv(keys, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
@@ -223,8 +215,6 @@ class Attention(nn.Module):
 
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2)
-        if self.layer_id == 0:
-            print(4, id(self.cache_k))
         values = values.transpose(1, 2)
         scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
         scores = scores + mask  # (bs, n_local_heads, seqlen, max_seqlen)
@@ -324,7 +314,6 @@ class TransformerBlock(nn.Module):
             world_size=world_size,
             rank=rank,
             groups=groups,
-            layer_id=layer_id,
         )
         self.feed_forward = FeedForward(
             dim=args.dim,
