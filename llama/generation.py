@@ -152,19 +152,19 @@ class Llama:
 
             for name, layer in model.named_modules():
                 if 'tok_embeddings' in name:
-                    xs.mark_sharding(layer.weight, mesh, row_partition)
+                    xs.mark_sharding(layer.weight, mesh, ('model', 'data'))
                 if 'attention.' in name:
                     if 'wo' in name:
-                        xs.mark_sharding(layer.weight, mesh, row_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('model', 'data'))
                     else:
-                        xs.mark_sharding(layer.weight, mesh, col_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('data', 'model'))
                 if 'feed_forward.' in name:
                     if 'w2' in name:
-                        xs.mark_sharding(layer.weight, mesh, row_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('model', 'data'))
                     else:
-                        xs.mark_sharding(layer.weight, mesh, col_partition)
+                        xs.mark_sharding(layer.weight, mesh, ('data', 'model'))
                 if 'output' in name:
-                    xs.mark_sharding(layer.weight, mesh, col_partition)
+                    xs.mark_sharding(layer.weight, mesh, 'model', 'data')
 
         if dynamo:
             if USE_CUDA:
@@ -263,8 +263,8 @@ class Llama:
         top_p_tensor = torch.tensor(float(top_p)).to(self.device)
         with_temp = temperature > 0
 
-        # if self.device.type == "xla":
-        #     xm.mark_step()
+        if self.device.type == "xla":
+             xm.mark_step()
 
         decoding_start_time = time.time()
         prev_pos = 0
@@ -286,7 +286,7 @@ class Llama:
             input_pos_tensor = torch.arange(prev_pos, prev_pos + section_len).to(self.device)
             output_pos_tensor = cur_pos_tensor - 1
             input_tokens = tokens.index_select(1, input_pos_tensor)
-
+            xm.mark_step()
             tokens, input_tokens, cur_pos_tensor, input_pos_tensor, output_pos_tensor, token_logprobs, eos_reached \
                 = self._generate_one_token_fn(
                     tokens, input_tokens, input_text_mask,
@@ -294,7 +294,7 @@ class Llama:
                     output_pos_tensor, temperature_tensor,
                     top_p_tensor, with_temp, logprobs, token_logprobs, eos_reached, pad_id
                 )
-
+            xm.mark_step()
             prev_pos = cur_pos
 
         assert cur_pos_tensor.item() == prev_pos + 1 and prev_pos == min_prompt_len
@@ -306,6 +306,7 @@ class Llama:
                     output_pos_tensor, temperature_tensor,
                     top_p_tensor, with_temp, logprobs, token_logprobs, eos_reached, pad_id
                 )
+            xm.mark_step()
             if cur_pos % 10 == 0:
                 if all(eos_reached):
                     break

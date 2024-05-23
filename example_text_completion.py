@@ -48,11 +48,11 @@ def main(
     prompts = [
         # For these prompts, the expected answer is the natural continuation of the prompt
         "I believe the meaning of life is",
-#        "Simply put, the theory of relativity states that ",
-#        """A brief message congratulating the team on the launch:
+        "Simply put, the theory of relativity states that ",
+#       """A brief message congratulating the team on the launch:
 #
-#        Hi everyone,
-#        
+#       Hi everyone,
+#
 #        I just """,
 #        # Few shot prompt (providing a few examples before asking model to complete more);
 #        """Translate English to French:
@@ -64,13 +64,17 @@ def main(
     ]
 
     import time
-    # print("About to start in 10 seconds")
-    # server = xp.start_server(9012, only_on_master=False)
-    # time.sleep(10)
+    print("About to start in 10 seconds")
+    server = xp.start_server(9012, only_on_master=False)
+    time.sleep(2)
     print("Starting!")
 
-    for _ in range(2):
+    for i in range(2):
         with torch.no_grad():
+            if i == 1:
+                profile_logdir = os.environ['PROFILE_LOGDIR']
+                # Use trace_detached to capture the profile from a background thread
+                xp.trace_detached('localhost:9012', profile_logdir, duration_ms=100000)
             results = generator.text_completion(
                 prompts,
                 max_gen_len=max_gen_len,

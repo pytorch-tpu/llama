@@ -22,7 +22,7 @@ from torch import nn
 import torch_xla.core.xla_model as xm
 import torch_xla.experimental.xla_sharding as xs
 import torch_xla.runtime as xr
-
+import torch_xla.debug.profiler as xp
 
 @dataclass
 class ModelArgs:
@@ -62,9 +62,9 @@ class RMSNorm(torch.nn.Module):
 
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
     def forward(self, x):
-        output = self._norm(x.float()).type_as(x)
+        with xp.Trace('RMSNorm'): 
+            output = self._norm(x.float()).type_as(x)
         return output * self.weight
 
 
@@ -179,36 +179,42 @@ class Attention(nn.Module):
         mask: Optional[torch.Tensor],
         input_indexes: torch.Tensor,
     ):
-        bsz, seqlen, _ = x.shape
-        xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
-
-        xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
-        xk = xk.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
-        xv = xv.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
-
-        xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
-
-        self.cache_k = self.cache_k.index_copy(1, input_indexes, xk)
-        self.cache_v = self.cache_v.index_copy(1, input_indexes, xv)
-
-        keys = self.cache_k[:, :]
-        values = self.cache_v[:, :]
-
-        # repeat k/v heads if n_kv_heads < n_heads
-        keys = repeat_kv(keys, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
-        values = repeat_kv(values, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
-
-        xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
-        keys = keys.transpose(1, 2)
-        values = values.transpose(1, 2)
-        #scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        scores = torch.einsum('ijkl,ijml->ijkm', xq, keys)
-        scores = scores + mask  # (bs, n_local_heads, seqlen, max_seqlen)
-        scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-        #output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
-        output = torch.einsum('ijkl,ijlm->ijkm', scores, values)
-        output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
-        output = self.wo(output)
+        with xp.Trace('Attention1'): 
+            bsz, seqlen, _ = x.shape
+            xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
+            xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
+            xk = xk.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
+            xv = xv.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
+        xm.mark_step()
+        with xp.Trace('Attention2'): 
+            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
+            self.cache_k.index_copy_(1, input_indexes, xk)
+            self.cache_v.index_copy_(1, input_indexes, xv)
+        xm.mark_step()
+        with xp.Trace('Attention3'):
+            keys = self.cache_k[:, :]
+            values = self.cache_v[:, :]
+        xm.mark_step()
+        with xp.Trace('Attention4'):
+            # repeat k/v heads if n_kv_heads < n_heads
+            keys = repeat_kv(keys, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
+            values = repeat_kv(values, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
+        xm.mark_step()
+        with xp.Trace('Attention5'):
+            xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
+            keys = keys.transpose(1, 2)
+            values = values.transpose(1, 2)
+        xm.mark_step()
+        with xp.Trace('Attention6'):
+            #scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+            scores = torch.einsum('ijkl,ijml->ijkm', xq, keys)
+            scores = scores + mask  # (bs, n_local_heads, seqlen, max_seqlen)
+            scores = F.softmax(scores.float(), dim=-1).type_as(xq)
+            #output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
+            output = torch.einsum('ijkl,ijlm->ijkm', scores, values)
+            output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
+            output = self.wo(output)
+        xm.mark_step()
 
         # Activation output sharding
         import torch_xla.experimental.dynamo_mark_sharding
@@ -258,6 +264,7 @@ class FeedForward(nn.Module):
             dim, hidden_dim, bias=False
         )
 
+    @xp.trace_me("Feedforward.forward")
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
@@ -365,6 +372,7 @@ class Transformer(nn.Module):
         _bsz, seqlen = tokens.shape
         assert _bsz == self.params.max_batch_size
         h = self.tok_embeddings(tokens)
+        import pdb; pdb.set_trace()
         freqs_cis = self.freqs_cis.index_select(0, input_indexes)
 
         mask = self.mask.index_select(2, input_indexes)
