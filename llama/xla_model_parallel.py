@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Callable, Optional, List, Any
 
 import torch
@@ -9,6 +10,8 @@ import torch.nn.init as init
 from torch.nn.parameter import Parameter
 
 from fairscale.nn.model_parallel.utils import divide_and_check_no_remainder, split_tensor_along_last_dim
+
+from .quant_util import TensorQConfig, quantize_tensor
 
 import os
 
@@ -394,9 +397,8 @@ class ColumnParallelLinear(torch.nn.Module):
         if quant:
             self.weight = Parameter(torch.empty(
                 (self.output_size_per_partition, self.in_features),
-                dtype=torch.int8),
-                                    requires_grad=False)
-            self.weight_scaler = Parameter(torch.zeros(1), requires_grad=False)
+                dtype=torch.int8), requires_grad=False)
+            self.weight_scaler = Parameter(torch.Tensor(self.output_size_per_partition))
         else:
             self.weight = Parameter(
                 torch.Tensor(self.output_size_per_partition, self.in_features))
@@ -426,6 +428,21 @@ class ColumnParallelLinear(torch.nn.Module):
         return gather_from_model_parallel_region(
             self.weight.data.transpose(0, 1), self.groups, self.world_size,
             self.rank).transpose_(0, 1)
+
+    def quantize(self):
+        assert self.quant == False
+        fp_w = deepcopy(self.weight.data)
+        orig_dtype = fp_w.dtype
+        fp_w = fp_w.to(torch.float32)
+        self.weight = Parameter(
+                torch.empty((self.output_size_per_partition, self.in_features), dtype=torch.int8),
+                requires_grad=False,
+            )
+        self.weight_scaler = Parameter(torch.Tensor(self.output_size_per_partition))
+        qconfig = TensorQConfig(axis=0)
+        self.weight.data, scale, zero_point = quantize_tensor(fp_w, qconfig)
+        self.weight_scaler.data = scale.to(orig_dtype)
+        self.quant = True
 
     def forward(self, input_: torch.Tensor) -> torch.Tensor:  # type: ignore
         # Set up backprop all-reduce.
@@ -523,9 +540,8 @@ class RowParallelLinear(torch.nn.Module):
         if quant:
             self.weight = Parameter(torch.empty(
                 (self.out_features, self.input_size_per_partition),
-                dtype=torch.int8),
-                                    requires_grad=False)
-            self.weight_scaler = Parameter(torch.zeros(1), requires_grad=False)
+                dtype=torch.int8), requires_grad=False)
+            self.weight_scaler = Parameter(torch.Tensor(self.out_features))
         else:
             self.weight = Parameter(
                 torch.Tensor(self.out_features, self.input_size_per_partition))
@@ -554,6 +570,21 @@ class RowParallelLinear(torch.nn.Module):
     def get_master_weight(self) -> torch.Tensor:
         return gather_from_model_parallel_region(self.weight.data, self.groups,
                                                  self.world_size, self.rank)
+
+    def quantize(self):
+        assert self.quant == False
+        fp_w = deepcopy(self.weight.data)
+        orig_dtype = fp_w.dtype
+        fp_w = fp_w.to(torch.float32)
+        self.weight = Parameter(
+                torch.empty((self.out_features, self.input_size_per_partition), dtype=torch.int8),
+                requires_grad=False,
+            )
+        self.weight_scaler = Parameter(torch.Tensor(self.out_features))
+        qconfig = TensorQConfig(axis=0)
+        self.weight.data, scale, zero_point = quantize_tensor(fp_w, qconfig)
+        self.weight_scaler.data = scale.to(orig_dtype)
+        self.quant = True
 
     def forward(self, input_: torch.Tensor) -> torch.Tensor:  # type:ignore
         # Set up backprop all-reduce.
