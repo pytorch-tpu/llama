@@ -17,6 +17,7 @@ USE_CUDA = os.environ.get('USE_CUDA', False)
 # Some how xla init will slow down the CUDA speed.
 if not USE_CUDA:
     import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
 
 TAG = None
 RANKSET = None
@@ -35,13 +36,13 @@ def set_g_group():
 def get_model_parallel_rank():
     if USE_CUDA:
         return dist.get_rank()
-    return xm.get_ordinal()
+    return xr.global_ordinal()
 
 
 def get_model_parallel_world_size():
     if USE_CUDA:
         return dist.get_world_size()
-    return xm.xrt_world_size()
+    return xr.world_size()
 
 
 def get_model_parallel_group():
